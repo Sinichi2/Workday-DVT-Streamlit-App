@@ -1,21 +1,12 @@
 # HCM Data Validator
 
-A Streamlit MVP that runs a two-stage pipeline on HCM data:
+A multi-page Streamlit app with **three independent features** for HCM data work:
 
-1. **Mapping (Stage 1)** — transforms a source dataset (e.g., Oracle export) into Workday shape using a configurable mapping file
-2. **Validation (Stage 2)** — runs OLD and NEW business rule sets against the mapped dataset and compares results
+1. **✅ Validation** — run business rules against a dataset, compare two rule sets
+2. **🔄 Source Mapping** — transform a source dataset (e.g., Oracle) into Workday shape
+3. **📊 Dashboard** — view statistics on a validated dataset by category
 
-## What it does
-
-1. Accepts four Excel uploads:
-   - Source dataset (any shape)
-   - Mapping file (source → target field mappings + crosswalks)
-   - OLD validation rules (baseline)
-   - NEW validation rules (target rule set)
-2. Stage 1: applies mappings + crosswalks to produce a target-shaped dataset
-3. Stage 2: runs both rule sets against the target dataset
-4. Shows results across five tabs: Summary, Mapping, Comparison, Dashboard, Log
-5. Downloads available for the mapped intermediate dataset and the final validated dataset
+Each feature is fully self-contained: separate uploads, separate logic, no data is shared between pages.
 
 ## Local run
 
@@ -24,111 +15,112 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-The app opens at `http://localhost:8501`.
+The app opens at `http://localhost:8501` with a sidebar listing all three pages.
 
 ## Deploy to Streamlit Community Cloud
 
 1. Push this folder to a GitHub repo
 2. Go to [share.streamlit.io](https://share.streamlit.io) and sign in with GitHub
-3. Click **New app**, pick the repo, branch, and `app.py`
+3. Click **New app**, pick the repo, branch, and `app.py` as the main file
 4. Click **Deploy** — you get a permanent URL like `your-app.streamlit.app`
 
-Every `git push` to the connected branch redeploys automatically.
+Streamlit auto-detects the `pages/` directory and renders the sidebar. Every `git push` redeploys.
 
 ## File structure
 
 ```
 .
-├── app.py                       # Streamlit UI (4 uploads, 5 tabs)
-├── mapping_engine.py            # Stage 1: source-to-target transformations
-├── validation_engine.py         # Stage 2: business rule engine
-├── generate_oracle_samples.py   # Script that produced the samples
+├── app.py                       # Landing page (links to all three features)
+├── pages/
+│   ├── 1_Validation.py          # Feature 1
+│   ├── 2_Source_Mapping.py      # Feature 2
+│   └── 3_Dashboard.py           # Feature 3
+├── validation_engine.py         # Rule engine (used by Validation page)
+├── mapping_engine.py            # Mapping engine (used by Source Mapping page)
 ├── requirements.txt
-├── .streamlit/
-│   └── config.toml              # Theme settings
+├── .streamlit/config.toml       # Theme settings
 ├── samples/
-│   ├── oracle_hcm_export.xlsx        # 50 Oracle-style employees
-│   ├── oracle_to_workday_mapping.xlsx # Mapping rules + crosswalks
-│   ├── validation_rules_v1_old.xlsx  # 5 basic rules
-│   └── validation_rules_v2_new.xlsx  # 28 rules including Workday Core HCM spec
+│   ├── validation_rules_v1_old.xlsx
+│   └── validation_rules_v2_new.xlsx
 └── README.md
 ```
 
-## Mapping file schema
+## Feature 1 — Validation
 
-The mapping file is an Excel workbook with **two sheets**:
+**Inputs (3 files):**
+- HCM dataset (in target shape, e.g., Workday)
+- Old validation rules
+- New validation rules
 
-### Sheet 1: `mappings`
+**Tabs:** Summary · Comparison (side-by-side OLD vs NEW) · Dashboard (toggle OLD/NEW table view) · Log
 
-One row per target field.
+**Output:** Validated dataset with `_errors` and `_is_valid` columns appended.
 
-| Column | Required | Meaning |
-|---|---|---|
-| `source_field` | Conditional | Column in source dataset (blank for `constant` transformations) |
-| `target_field` | Yes | Column to produce in target dataset |
-| `transformation` | Yes | Operation to apply (see below) |
-| `parameter` | No | Optional argument (date format, crosswalk name, constant value) |
-| `required` | No | Yes/No flag (informational only) |
-| `description` | No | Human-readable note |
+### Validation rule file schema
 
-### Sheet 2: `crosswalks` (optional)
-
-Value-level lookup tables, referenced by `transformation=crosswalk` rows.
+One sheet, one row per rule:
 
 | Column | Required | Meaning |
 |---|---|---|
-| `crosswalk_name` | Yes | Identifier referenced from the mappings sheet |
-| `source_value` | Yes | Value as it appears in the source dataset |
-| `target_value` | Yes | Value to substitute in the target dataset |
-
-### Supported mapping transformations
-
-| Operation | Parameter | Example |
-|---|---|---|
-| `none` | — | pass value through unchanged |
-| `trim` | — | strip surrounding whitespace |
-| `trim_leading_zeros` | — | `"00100001"` → `"100001"` |
-| `lowercase` | — | `"ABC"` → `"abc"` |
-| `uppercase` | — | `"abc"` → `"ABC"` |
-| `title_case` / `proper_case` | — | `"JOHN DOE"` → `"John Doe"` |
-| `format_date` | strftime format (default `%Y-%m-%d`) | `"30-SEP-2017"` → `"2017-09-30"` |
-| `round_decimals` | decimal places (default 2) | `12345.6789` → `12345.68` |
-| `remove_special` | — | strips non-alphanumeric characters |
-| `digits_only` | — | `"+1 (555) 123-4567"` → `"15551234567"` |
-| `crosswalk` | crosswalk_name | looks up `source_value` → `target_value` |
-| `constant` | constant value | every row gets this value |
-| `concat` | `field1\|field2\|...` | joins multiple source fields with space |
-| `split_first` | delimiter (default space) | takes first token |
-| `split_last` | delimiter (default space) | takes last token |
-
-## Validation rule file schema
-
-The validation rules file is an Excel workbook with one sheet. Each row defines a rule.
-
-| Column | Required | Meaning |
-|---|---|---|
-| `rule_id` | Yes | Unique identifier (e.g. `V001`, `T001`) |
-| `field` | Yes | Column in the dataset (after mapping) |
+| `rule_id` | Yes | Unique identifier |
+| `field` | Yes | Column in the dataset |
 | `rule_type` | Yes | `validation`, `transformation`, or `not_implemented` |
-| `operation` | Yes | See operations table below |
+| `operation` | Yes | See operations table |
 | `parameter` | No | Optional argument |
 | `severity` | No | `Hard Stop`, `Soft Warning`, or `Info` |
 | `category` | No | Free-text tag |
 | `description` | No | Human-readable explanation |
 
-### Supported validation operations
+Supported validation operations: `not_null`, `contains`, `regex`, `unique`, `greater_than`, `less_than`, `date_not_future`, `date_within_offset_days`, `date_after_field`, `date_before_or_equal_field`, `not_equal_to_field`, `age_at_least`, `conditional_equals`, `conditional_regex`, `fte_hours_consistent`
 
-`not_null`, `contains`, `regex`, `unique`, `greater_than`, `less_than`,
-`date_not_future`, `date_within_offset_days`, `date_after_field`,
-`date_before_or_equal_field`, `not_equal_to_field`, `age_at_least`,
-`conditional_equals`, `conditional_regex`, `fte_hours_consistent`
+Supported transformations: `trim`, `lowercase`, `uppercase`, `title_case`
 
-### Supported validation transformations
+## Feature 2 — Source Mapping
 
-`trim`, `lowercase`, `uppercase`, `title_case`
+**Inputs (2 files):**
+- Source dataset (any column shape)
+- Mapping file with `mappings` + `crosswalks` sheets
+
+**Tabs:** Overview · Source vs Target (side-by-side) · Log
+
+**Output:** Mapped dataset in target shape.
+
+### Mapping file schema
+
+**Sheet `mappings`:**
+
+| Column | Required | Meaning |
+|---|---|---|
+| `source_field` | Conditional | Column in source dataset (blank for `constant`) |
+| `target_field` | Yes | Column to produce in target dataset |
+| `transformation` | Yes | Operation to apply |
+| `parameter` | No | Optional argument |
+| `required` | No | Yes/No flag (informational) |
+| `description` | No | Human-readable note |
+
+**Sheet `crosswalks` (optional):**
+
+| Column | Required | Meaning |
+|---|---|---|
+| `crosswalk_name` | Yes | Identifier referenced from mappings |
+| `source_value` | Yes | Value in source dataset |
+| `target_value` | Yes | Value to substitute |
+
+Supported transformations: `none`, `trim`, `trim_leading_zeros`, `lowercase`, `uppercase`, `title_case` / `proper_case`, `format_date`, `round_decimals`, `remove_special`, `digits_only`, `crosswalk`, `constant`, `concat`, `split_first`, `split_last`
+
+## Feature 3 — Dashboard
+
+**Input (1 file):**
+- A validated dataset (must already have `_errors` and `_is_valid` columns from Feature 1)
+
+**Sections:**
+- Headline metrics (total / passing / failing / with warnings)
+- Breakdowns by Country and Worker Type (and Employment Status if present)
+- By Severity (Hard Stop / Soft Warning / Info)
+- By Failure Reason (per rule_id, sorted by frequency)
 
 ## Notes
 
 - Files are processed in memory and not persisted.
-- Upload limit set to 50 MB in `.streamlit/config.toml`.
-- The `samples/` folder contains a complete working example: Oracle-style source data, the Oracle-to-Workday mapping file, and both rule sets.
+- Upload limit: 50 MB (configurable in `.streamlit/config.toml`).
+- The `samples/` folder contains working examples for each feature.
