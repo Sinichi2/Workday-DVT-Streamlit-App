@@ -1,15 +1,20 @@
 """
-HCM Data Validation Tool - Streamlit MVP
+HCM Data Validation Tool - Streamlit MVP (with Source-to-Target mapping)
+
+Two-stage pipeline:
+  Stage 1 - Mapping  : Source dataset (e.g., Oracle) -> Workday-shaped dataset
+  Stage 2 - Validation : Workday-shaped dataset -> Validated dataset
 
 Flow:
-  1. Upload HCM dataset, OLD validation rules, NEW validation rules
+  1. Upload source dataset, mapping file, OLD rules, NEW rules
   2. Click Process
-  3. Browse the results in four tabs:
-     - Summary    : pass/fail metrics and rule-hit breakdowns
-     - Comparison : side-by-side OLD vs NEW validated datasets
+  3. Browse results across five tabs:
+     - Summary    : pipeline metrics
+     - Mapping    : Oracle -> Workday side-by-side
+     - Comparison : OLD rules vs NEW rules side-by-side
      - Dashboard  : single read-only table (toggle OLD / NEW)
-     - Log        : run log + download
-  4. Download the validated NEW dataset
+     - Log        : full run log
+  4. Download the validated (mapped + NEW-rules) dataset
 """
 import io
 from datetime import datetime
@@ -17,6 +22,7 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
+from mapping_engine import apply_mapping, load_mapping_file
 from validation_engine import apply_rules, load_dataset, load_rules
 
 
@@ -32,16 +38,20 @@ st.set_page_config(
 # ---------- Session state ----------
 def _init_state():
     defaults = {
-        "processed":      False,
-        "old_result":     None,
-        "new_result":     None,
-        "old_summary":    None,
-        "new_summary":    None,
-        "log_lines":      [],
-        "view":           "new",
-        "source_name":    "",
-        "old_rules_name": "",
-        "new_rules_name": "",
+        "processed":        False,
+        "source_df":        None,
+        "mapped_df":        None,
+        "mapping_summary":  None,
+        "old_result":       None,
+        "new_result":       None,
+        "old_summary":      None,
+        "new_summary":      None,
+        "log_lines":        [],
+        "view":             "new",
+        "source_name":      "",
+        "mapping_name":     "",
+        "old_rules_name":   "",
+        "new_rules_name":   "",
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -60,7 +70,6 @@ def _to_excel_bytes(df: pd.DataFrame) -> bytes:
 
 
 def _build_hits_df(summary):
-    """Validation-hit table for a single rule set."""
     hits = summary.get("validation_hits", {})
     rules_df = summary.get("rules_df")
     if not hits or rules_df is None:
@@ -82,8 +91,9 @@ def _build_hits_df(summary):
 # ---------- Header ----------
 st.title("📋 HCM Data Validator")
 st.caption(
-    "Upload an HCM dataset and two rule sets. The tool runs both, lets you compare "
-    "the results side-by-side, and exports the validated dataset."
+    "**Source → Target → Validate.** Upload a source dataset, a mapping file, and two rule sets. "
+    "The tool transforms the source data to Workday format, runs both rule sets against it, and "
+    "lets you compare results side-by-side."
 )
 st.divider()
 
@@ -93,73 +103,102 @@ st.divider()
 # ============================================================
 if not st.session_state.processed:
     st.subheader("Step 1 — Upload files")
-    st.write("All three files must be `.xlsx`.")
+    st.write("All four files must be `.xlsx`.")
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
+    col3, col4 = st.columns(2)
+
     with col1:
-        st.markdown("**1. HCM Dataset**")
-        st.caption("Employee data to validate")
-        hcm_file = st.file_uploader(
-            "Upload HCM dataset", type=["xlsx"],
-            key="hcm_upload", label_visibility="collapsed",
+        st.markdown("**1. Source Dataset**")
+        st.caption("Raw data from the source system (e.g., Oracle export)")
+        source_file = st.file_uploader(
+            "Upload source dataset", type=["xlsx"],
+            key="source_upload", label_visibility="collapsed",
         )
+
     with col2:
-        st.markdown("**2. Old Validation Rules**")
-        st.caption("The current rule set")
+        st.markdown("**2. Mapping File**")
+        st.caption("Source → Target field mappings (Stage 1)")
+        mapping_file = st.file_uploader(
+            "Upload mapping file", type=["xlsx"],
+            key="mapping_upload", label_visibility="collapsed",
+        )
+
+    with col3:
+        st.markdown("**3. Old Validation Rules**")
+        st.caption("The current business rules (Stage 2 baseline)")
         old_rules_file = st.file_uploader(
             "Upload old rules", type=["xlsx"],
             key="old_rules_upload", label_visibility="collapsed",
         )
-    with col3:
-        st.markdown("**3. New Validation Rules**")
-        st.caption("The updated rule set")
+
+    with col4:
+        st.markdown("**4. New Validation Rules**")
+        st.caption("The updated business rules (Stage 2 target)")
         new_rules_file = st.file_uploader(
             "Upload new rules", type=["xlsx"],
             key="new_rules_upload", label_visibility="collapsed",
         )
 
     st.write("")
-    all_uploaded = (hcm_file is not None) and (old_rules_file is not None) and (new_rules_file is not None)
+    all_uploaded = all([source_file, mapping_file, old_rules_file, new_rules_file])
     if not all_uploaded:
-        st.info("Upload all three files to enable processing.")
+        st.info("Upload all four files to enable processing.")
 
     if st.button("▶ Process", type="primary", disabled=not all_uploaded):
-        with st.spinner("Running validations..."):
+        with st.spinner("Running pipeline..."):
             log = []
             log.append(f"Run started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            log.append(f"HCM dataset:    {hcm_file.name} ({hcm_file.size:,} bytes)")
+            log.append(f"Source dataset: {source_file.name} ({source_file.size:,} bytes)")
+            log.append(f"Mapping file:   {mapping_file.name} ({mapping_file.size:,} bytes)")
             log.append(f"Old rules file: {old_rules_file.name} ({old_rules_file.size:,} bytes)")
             log.append(f"New rules file: {new_rules_file.name} ({new_rules_file.size:,} bytes)")
             log.append("")
 
             try:
-                df         = load_dataset(hcm_file)
-                rules_old  = load_rules(old_rules_file)
-                rules_new  = load_rules(new_rules_file)
-                log.append(f"Loaded dataset: {len(df)} rows x {len(df.columns)} columns")
+                # Load all four files
+                source_df              = load_dataset(source_file)
+                mappings, crosswalks   = load_mapping_file(mapping_file)
+                rules_old              = load_rules(old_rules_file)
+                rules_new              = load_rules(new_rules_file)
+                log.append(f"Loaded source dataset: {len(source_df)} rows x {len(source_df.columns)} columns")
+                log.append(f"Loaded mappings: {len(mappings)} field mappings, {len(crosswalks)} crosswalk group(s)")
                 log.append(f"Loaded OLD rules: {len(rules_old)} rules")
                 log.append(f"Loaded NEW rules: {len(rules_new)} rules")
                 log.append("")
 
+                # Stage 1: Mapping
+                log.append("====== STAGE 1: MAPPING (source -> target) ======")
+                mapped_df, mapping_summary, map_log = apply_mapping(source_df, mappings, crosswalks)
+                log.extend(map_log)
+                log.append("")
+
+                # Stage 2: Validation (both rule sets, on the mapped dataset)
+                log.append("====== STAGE 2: VALIDATION ======")
                 log.append("------ Running OLD rules ------")
-                old_result, old_summary, old_log = apply_rules(df, rules_old)
+                old_result, old_summary, old_log = apply_rules(mapped_df, rules_old)
                 log.extend(old_log)
                 log.append("")
                 log.append("------ Running NEW rules ------")
-                new_result, new_summary, new_log = apply_rules(df, rules_new)
+                new_result, new_summary, new_log = apply_rules(mapped_df, rules_new)
                 log.extend(new_log)
                 log.append("")
                 log.append(f"Run finished at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-                st.session_state.old_result     = old_result
-                st.session_state.new_result     = new_result
-                st.session_state.old_summary    = old_summary
-                st.session_state.new_summary    = new_summary
-                st.session_state.log_lines      = log
-                st.session_state.source_name    = hcm_file.name
-                st.session_state.old_rules_name = old_rules_file.name
-                st.session_state.new_rules_name = new_rules_file.name
-                st.session_state.processed      = True
+                # Persist into session state
+                st.session_state.source_df       = source_df
+                st.session_state.mapped_df       = mapped_df
+                st.session_state.mapping_summary = mapping_summary
+                st.session_state.old_result      = old_result
+                st.session_state.new_result      = new_result
+                st.session_state.old_summary     = old_summary
+                st.session_state.new_summary     = new_summary
+                st.session_state.log_lines       = log
+                st.session_state.source_name     = source_file.name
+                st.session_state.mapping_name    = mapping_file.name
+                st.session_state.old_rules_name  = old_rules_file.name
+                st.session_state.new_rules_name  = new_rules_file.name
+                st.session_state.processed       = True
                 st.rerun()
 
             except Exception as e:
@@ -173,6 +212,7 @@ if not st.session_state.processed:
 else:
     old_s = st.session_state.old_summary
     new_s = st.session_state.new_summary
+    map_s = st.session_state.mapping_summary
 
     # ---- Top bar: source files + action buttons ----
     left, right = st.columns([3, 1])
@@ -180,13 +220,14 @@ else:
         st.subheader("Results")
         st.caption(
             f"Source: `{st.session_state.source_name}` · "
+            f"Mapping: `{st.session_state.mapping_name}` · "
             f"Old rules: `{st.session_state.old_rules_name}` · "
             f"New rules: `{st.session_state.new_rules_name}`"
         )
     with right:
         new_excel_bytes = _to_excel_bytes(st.session_state.new_result)
         download_name = (
-            st.session_state.source_name.replace(".xlsx", "") + "_validated_new.xlsx"
+            st.session_state.source_name.replace(".xlsx", "") + "_validated.xlsx"
         )
         st.download_button(
             label="⬇ Download validated dataset",
@@ -204,41 +245,54 @@ else:
     st.divider()
 
     # ---- Tabs ----
-    tab_summary, tab_compare, tab_dashboard, tab_log = st.tabs([
-        "📊 Summary", "🔀 Comparison", "📋 Dashboard", "📝 Log"
+    tab_summary, tab_mapping, tab_compare, tab_dashboard, tab_log = st.tabs([
+        "📊 Summary", "🔄 Mapping", "🔀 Comparison", "📋 Dashboard", "📝 Log"
     ])
 
     # ----------------------------------------------------------------
     # Tab 1: Summary
     # ----------------------------------------------------------------
     with tab_summary:
-        st.markdown("### Validation summary")
+        st.markdown("### Pipeline summary")
 
+        # Top metrics
         sa, sb, sc, sd = st.columns(4)
         with sa:
-            st.metric("Total rows", f"{new_s['total_rows']:,}")
+            st.metric("Source rows", f"{map_s['source_rows']:,}",
+                      help=f"{map_s['source_cols']} source columns")
         with sb:
+            st.metric("Target rows", f"{map_s['target_rows']:,}",
+                      help=f"{map_s['target_cols']} target columns after mapping")
+        with sc:
             delta = new_s["rows_passing"] - old_s["rows_passing"]
             st.metric(
                 "Passing (NEW)", f"{new_s['rows_passing']:,}",
                 delta=f"{delta:+d} vs OLD",
                 delta_color="normal" if delta >= 0 else "inverse",
             )
-        with sc:
+        with sd:
             delta = new_s["rows_failing"] - old_s["rows_failing"]
             st.metric(
                 "Failing (NEW)", f"{new_s['rows_failing']:,}",
                 delta=f"{delta:+d} vs OLD",
                 delta_color="inverse" if delta >= 0 else "normal",
             )
-        with sd:
-            st.metric("Soft warnings (NEW)", f"{new_s['rows_with_warnings']:,}")
 
         st.markdown("")
 
+        # Per-stage breakdown
+        st.markdown("**Stage 1 — Mapping**")
+        st.caption(
+            f"Applied {map_s['mapping_count']} field mapping(s) "
+            f"using {map_s['crosswalk_count']} crosswalk group(s)."
+        )
+        if not map_s["per_field"].empty:
+            st.dataframe(map_s["per_field"], use_container_width=True, hide_index=True, height=240)
+
+        st.markdown("**Stage 2 — Validation (NEW rules)**")
         ca, cb = st.columns(2)
         with ca:
-            st.markdown("**Transformations applied (NEW)**")
+            st.caption("Transformations applied")
             tx_changes = new_s.get("transform_changes", {})
             if tx_changes:
                 tx_df = pd.DataFrame(
@@ -247,9 +301,8 @@ else:
                 st.dataframe(tx_df, use_container_width=True, hide_index=True)
             else:
                 st.caption("No transformation rules in the NEW rule set.")
-
         with cb:
-            st.markdown("**Validation hits (NEW)**")
+            st.caption("Validation hits")
             hits_df = _build_hits_df(new_s)
             if not hits_df.empty:
                 st.dataframe(hits_df, use_container_width=True, hide_index=True)
@@ -257,14 +310,71 @@ else:
                 st.success("All rows passed every validation.")
 
     # ----------------------------------------------------------------
-    # Tab 2: Comparison - side-by-side OLD vs NEW
+    # Tab 2: Mapping — Source vs Target side-by-side
+    # ----------------------------------------------------------------
+    with tab_mapping:
+        st.markdown("### Stage 1: Source → Target mapping")
+        st.caption(
+            "The mapping engine converted the source columns and values into Workday shape. "
+            "Compare the raw source against the mapped target below."
+        )
+
+        m1, m2, m3 = st.columns(3)
+        with m1:
+            st.metric("Source columns", map_s["source_cols"])
+        with m2:
+            st.metric("Target columns", map_s["target_cols"])
+        with m3:
+            st.metric("Crosswalk groups", map_s["crosswalk_count"])
+
+        if map_s["unknown_ops"]:
+            st.warning(
+                "Unknown transformation(s) encountered (passed through as-is): "
+                + ", ".join(map_s["unknown_ops"])
+            )
+
+        st.markdown("---")
+        st.markdown("#### Per-field mapping details")
+        if not map_s["per_field"].empty:
+            st.dataframe(
+                map_s["per_field"],
+                use_container_width=True, hide_index=True, height=300,
+            )
+
+        st.markdown("---")
+        st.markdown("#### Side-by-side: source vs target")
+        st.caption("First 50 rows shown.")
+        sb_left, sb_right = st.columns(2)
+        with sb_left:
+            st.markdown(f"**Source dataset** ({map_s['source_cols']} cols)")
+            st.dataframe(
+                st.session_state.source_df.head(50),
+                use_container_width=True, hide_index=False, height=420,
+            )
+        with sb_right:
+            st.markdown(f"**Target dataset** ({map_s['target_cols']} cols)")
+            st.dataframe(
+                st.session_state.mapped_df.head(50),
+                use_container_width=True, hide_index=False, height=420,
+            )
+
+        # Let users download the intermediate mapped dataset too
+        mapped_bytes = _to_excel_bytes(st.session_state.mapped_df)
+        st.download_button(
+            label="⬇ Download mapped dataset (before validation)",
+            data=mapped_bytes,
+            file_name=st.session_state.source_name.replace(".xlsx", "") + "_mapped.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+    # ----------------------------------------------------------------
+    # Tab 3: Comparison — OLD vs NEW validation results
     # ----------------------------------------------------------------
     with tab_compare:
-        st.markdown("### Side-by-side comparison: OLD rules vs NEW rules")
+        st.markdown("### Stage 2: OLD rules vs NEW rules")
         st.caption(
-            "Same source dataset, validated against each rule set. The two tables below "
-            "show the resulting `_errors` and `_is_valid` columns next to the worker's identity, "
-            "so you can see exactly what the new rules catch that the old ones missed."
+            "Both rule sets ran against the same **mapped** dataset. "
+            "The tables show validation outcome columns next to worker identity."
         )
 
         filt = st.radio(
@@ -334,7 +444,7 @@ else:
             st.metric("Different result in either direction", f"{int(differs.sum()):,}")
 
     # ----------------------------------------------------------------
-    # Tab 3: Dashboard - single table view with OLD/NEW toggle
+    # Tab 4: Dashboard
     # ----------------------------------------------------------------
     with tab_dashboard:
         st.markdown("### Validated dataset")
@@ -385,7 +495,7 @@ else:
         st.caption(f"{len(display_df):,} row(s) shown.")
 
     # ----------------------------------------------------------------
-    # Tab 4: Log
+    # Tab 5: Log
     # ----------------------------------------------------------------
     with tab_log:
         st.markdown("### Run log")
