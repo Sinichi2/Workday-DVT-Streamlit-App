@@ -1,23 +1,36 @@
 """
 HCM Data Validation Engine
 
-Lifted from the v2 Colab notebook into a module for the Streamlit app.
-Operations supported:
-  Validations: not_null, contains, regex, unique, greater_than, less_than,
-               date_not_future, date_within_offset_days, date_after_field,
-               date_before_or_equal_field, not_equal_to_field, age_at_least,
-               conditional_equals, conditional_regex, fte_hours_consistent
-  Transformations: trim, lowercase, uppercase, title_case
+Applies a set of validation and transformation rules to a tabular dataset.
+Returns the dataset with two added columns:
+  _errors    : semicolon-separated list of failed rule IDs and severities
+  _is_valid  : True if no Hard Stop rules failed
+
+Severity values follow Workday conventions: Hard Stop, Soft Warning, Info.
+
+Operations supported
+--------------------
+Validations (read-only, flag failures):
+  not_null, contains, regex, unique,
+  greater_than, less_than,
+  date_not_future, date_within_offset_days,
+  date_after_field, date_before_or_equal_field,
+  not_equal_to_field, age_at_least,
+  conditional_equals, conditional_regex,
+  fte_hours_consistent
+
+Transformations (mutate the dataset in place before validations run):
+  trim, lowercase, uppercase, title_case
 """
-import pandas as pd
 import re
 from datetime import date, datetime, timedelta
+
+import pandas as pd
 
 
 # ---------- Helpers ----------
 
 def _to_date(v):
-    """Parse a value into a date; return None on failure."""
     if pd.isna(v) or v is None or v == "":
         return None
     if isinstance(v, datetime):
@@ -48,7 +61,7 @@ def _years_since(d):
 
 
 def _parse_conditional(param):
-    """Parse 'OtherField=Value:RHS' -> (other_field, condition_value, rhs)."""
+    """Parse 'OtherField=Value:RHS' into (other_field, condition_value, rhs)."""
     cond, _, rhs = param.partition(":")
     other_field, _, cond_value = cond.partition("=")
     return other_field.strip(), cond_value.strip(), rhs.strip()
@@ -56,21 +69,28 @@ def _parse_conditional(param):
 
 # ---------- I/O ----------
 
-def load_dataset(file) -> pd.DataFrame:
-    """Read an HCM dataset (Excel) into a DataFrame. Accepts a path or file-like object."""
+def load_dataset(file):
+    """Read a dataset (Excel) into a DataFrame."""
     return pd.read_excel(file)
 
 
-def load_rules(file) -> pd.DataFrame:
-    """Read a rules file (Excel) into a DataFrame. Handles missing optional columns gracefully."""
+def load_rules(file):
+    """Read a rules workbook into a DataFrame, defaulting any missing columns."""
     rules = pd.read_excel(file)
-    # Ensure expected columns exist
-    for col, default in [("parameter", ""), ("severity", "Hard Stop"),
-                         ("description", ""), ("category", "")]:
+    for col, default in [
+        ("parameter", ""),
+        ("severity", "Hard Stop"),
+        ("description", ""),
+        ("category", ""),
+    ]:
         if col not in rules.columns:
             rules[col] = default
-    rules = rules.fillna({"parameter": "", "severity": "Hard Stop",
-                          "description": "", "category": ""})
+    rules = rules.fillna({
+        "parameter": "",
+        "severity": "Hard Stop",
+        "description": "",
+        "category": "",
+    })
     return rules
 
 
@@ -98,7 +118,6 @@ def _apply_transformation(df, rule, log):
         log.append(f"  [skip] {rule['rule_id']}: unknown transformation '{op}'")
         return df, 0
 
-    # Count cells that actually changed
     changed = (before.astype(str) != df[field].astype(str)).sum()
     return df, int(changed)
 
@@ -106,7 +125,7 @@ def _apply_transformation(df, rule, log):
 # ---------- Validations ----------
 
 def _apply_validation(df, rule, log):
-    """Return a Boolean Series — True where the row PASSES the rule."""
+    """Return a boolean Series where True means the row PASSES the rule."""
     field, op, param = rule["field"], rule["operation"], str(rule["parameter"])
     if field not in df.columns:
         log.append(f"  [skip] {rule['rule_id']}: field '{field}' not in dataset")
@@ -133,7 +152,9 @@ def _apply_validation(df, rule, log):
         threshold = float(param)
         def _cmp(v):
             n = _to_number(v)
-            return False if n is None else (n > threshold if op == "greater_than" else n < threshold)
+            if n is None:
+                return False
+            return n > threshold if op == "greater_than" else n < threshold
         return col.apply(_cmp)
 
     if op == "date_not_future":
@@ -224,31 +245,29 @@ def _apply_validation(df, rule, log):
 
 # ---------- Orchestration ----------
 
-def apply_rules(df: pd.DataFrame, rules_df: pd.DataFrame):
+def apply_rules(df, rules_df):
     """
     Apply all rules to df. Returns (validated_df, summary, log_lines).
-      validated_df: copy of df with _errors and _is_valid columns added
-      summary: dict with counts of rules run, rows passing, etc.
-      log_lines: list of strings describing what happened
     """
     log = []
     out = df.copy()
 
-    # Transformations first
     transforms = rules_df[rules_df["rule_type"] == "transformation"]
     log.append(f"=== Transformations: {len(transforms)} rule(s) ===")
-    transform_changes = {}  # rule_id -> count of cells changed
+    transform_changes = {}
     for _, rule in transforms.iterrows():
         out, changed = _apply_transformation(out, rule, log)
         transform_changes[rule["rule_id"]] = changed
-        log.append(f"  {rule['rule_id']} on '{rule['field']}' ({rule['operation']}): {changed} cell(s) changed")
+        log.append(
+            f"  {rule['rule_id']} on '{rule['field']}' ({rule['operation']}): "
+            f"{changed} cell(s) changed"
+        )
 
-    # Validations
     validations = rules_df[rules_df["rule_type"] == "validation"]
     log.append(f"\n=== Validations: {len(validations)} rule(s) ===")
-    error_lists    = [[] for _ in range(len(out))]
+    error_lists = [[] for _ in range(len(out))]
     blocking_lists = [[] for _ in range(len(out))]
-    validation_hits = {}  # rule_id -> count of rows failed
+    validation_hits = {}
 
     for _, rule in validations.iterrows():
         passed = _apply_validation(out, rule, log)
@@ -265,27 +284,26 @@ def apply_rules(df: pd.DataFrame, rules_df: pd.DataFrame):
                 if rule["severity"] == "Hard Stop":
                     blocking_lists[pos].append(rule["rule_id"])
 
-    out["_errors"]   = ["; ".join(e) if e else "" for e in error_lists]
+    out["_errors"] = ["; ".join(e) if e else "" for e in error_lists]
     out["_is_valid"] = [len(b) == 0 for b in blocking_lists]
 
-    # Note rules in spec but not executed
     skipped = rules_df[rules_df["rule_type"] == "not_implemented"]
     if len(skipped):
-        log.append(f"\n=== Documented-but-not-implemented: {len(skipped)} rule(s) ===")
+        log.append(f"\n=== Documented but not implemented: {len(skipped)} rule(s) ===")
         for _, rule in skipped.iterrows():
             log.append(f"  {rule['rule_id']} on '{rule['field']}': {rule['description']}")
 
     summary = {
-        "total_rows":          len(out),
-        "rows_passing":        int(out["_is_valid"].sum()),
-        "rows_failing":        int((~out["_is_valid"]).sum()),
-        "rows_with_warnings":  int((out["_errors"] != "").sum()) - int((~out["_is_valid"]).sum()),
+        "total_rows": len(out),
+        "rows_passing": int(out["_is_valid"].sum()),
+        "rows_failing": int((~out["_is_valid"]).sum()),
+        "rows_with_warnings": int((out["_errors"] != "").sum()) - int((~out["_is_valid"]).sum()),
         "transformations_run": len(transforms),
-        "validations_run":     len(validations),
-        "not_implemented":     len(skipped),
-        "transform_changes":   transform_changes,
-        "validation_hits":     validation_hits,
-        "rules_df":            rules_df,
+        "validations_run": len(validations),
+        "not_implemented": len(skipped),
+        "transform_changes": transform_changes,
+        "validation_hits": validation_hits,
+        "rules_df": rules_df,
     }
 
     return out, summary, log
