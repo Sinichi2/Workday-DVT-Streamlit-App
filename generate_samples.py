@@ -273,6 +273,44 @@ def main():
     print(f"  -> {validated_path}")
     print(f"     Passing: {val_summary['rows_passing']}  Failing: {val_summary['rows_failing']}  Warnings: {val_summary['rows_with_warnings']}")
 
+    print("Building simulated Workday report extract for Data Compare Validation...")
+    # Start from the transformed dataset and introduce realistic load discrepancies:
+    #   - drop a few rows (records that failed to load)
+    #   - add a few rows (unexpected extras already in the tenant)
+    #   - change some field values (data that landed differently than intended)
+    report_df = workday_df.copy().reset_index(drop=True)
+
+    # Drop 3 rows (rows 20, 21, 22) to simulate records that did not load
+    report_df = report_df.drop(index=[20, 21, 22]).reset_index(drop=True)
+
+    # Change field values on a handful of rows to simulate load discrepancies.
+    # Use rows with valid (non-null) Employee IDs so they match on the key.
+    if "Annual Base Salary" in report_df.columns:
+        report_df.loc[5, "Annual Base Salary"] = round(
+            float(pd.to_numeric(report_df.loc[5, "Annual Base Salary"], errors="coerce") or 0) + 500, 2
+        )
+    if "Work Email" in report_df.columns:
+        report_df.loc[1, "Work Email"] = "changed.during.load@company.com"
+    if "Location" in report_df.columns:
+        report_df.loc[2, "Location"] = "LOC-DIFFERENT"
+    if "Worker Type" in report_df.columns:
+        report_df.loc[3, "Worker Type"] = "Employee" if report_df.loc[3, "Worker Type"] != "Employee" else "Contingent Worker"
+
+    # Add 2 extra rows (employees present in Workday but not in our loaded extract)
+    extra_rows = report_df.head(2).copy()
+    if "Employee ID" in extra_rows.columns:
+        extra_rows["Employee ID"] = ["999001", "999002"]
+    if "First Name" in extra_rows.columns:
+        extra_rows["First Name"] = ["Preexisting", "Preexisting"]
+    if "Last Name" in extra_rows.columns:
+        extra_rows["Last Name"] = ["Worker-A", "Worker-B"]
+    report_df = pd.concat([report_df, extra_rows], ignore_index=True)
+
+    report_path = SAMPLES / "workday_report_extract.xlsx"
+    report_df.to_excel(report_path, sheet_name="workday_report", index=False)
+    print(f"  -> {report_path}  ({len(report_df)} rows)")
+    print("     Seeded: 3 missing rows, 2 extra rows, 4 field changes vs workday_hcm_dataset.xlsx")
+
     print("\nDone. All sample files in samples/")
 
 
