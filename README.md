@@ -10,7 +10,7 @@ Validation**, and **Dashboard**. Each stage runs independently.
 |---|---|---|
 | Profiling | Any dataset | Per-column stats and anomaly list |
 | Transformation | Source dataset, mapping file | Target-shaped dataset |
-| System Validation | Dataset, validation rules | Validated dataset with errors and pass/fail flags |
+| System Validation | Dataset, validation rules (or use the bundled Workday HCM rules) | Validated dataset with errors and pass/fail flags |
 | Data Compare Validation | Expected dataset, actual dataset | Missing rows, extra rows, field mismatches |
 | Dashboard | A validated dataset | Breakdowns by Country, Worker Type, severity, failure reason |
 
