@@ -1,0 +1,374 @@
+"""
+Dashboard feature.
+
+One upload: a validated dataset (must contain _errors and _is_valid columns).
+Shows counts and percentages by Country, Worker Type, Severity, and Failure Reason.
+"""
+import sys
+from collections import Counter
+from pathlib import Path
+
+import pandas as pd
+import streamlit as st
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from validation_engine import load_dataset
+
+
+st.set_page_config(page_title="Dashboard - HCM Data Validator", layout="wide")
+
+
+def _init():
+    defaults = {
+        "dash_loaded": False,
+        "dash_df": None,
+        "dash_file_name": "",
+        "dash_rules_df": None,  # optional - loaded if the Excel has a Rules sheet
+    }
+    for k, v in defaults.items():
+        st.session_state.setdefault(k, v)
+
+_init()
+
+
+def _parse_error_tags(err_str):
+    """Pull (rule_id, severity) pairs from 'V005(Hard Stop); V008(Soft Warning)'."""
+    if not isinstance(err_str, str) or not err_str.strip():
+        return []
+    pairs = []
+    for tag in err_str.split(";"):
+        tag = tag.strip()
+        if not tag:
+            continue
+        if "(" in tag and tag.endswith(")"):
+            rid, sev = tag.split("(", 1)
+            pairs.append((rid.strip(), sev[:-1].strip()))
+        else:
+            pairs.append((tag, ""))
+    return pairs
+
+
+def _pct(part, total):
+    return f"{(part / total * 100):.1f}%" if total else "0.0%"
+
+
+def _breakdown_by_column(df, column):
+    if column not in df.columns:
+        return pd.DataFrame()
+    rows = []
+    for value in df[column].fillna("(blank)").unique():
+        subset = df[df[column].fillna("(blank)") == value]
+        total = len(subset)
+        passing = int(subset["_is_valid"].sum())
+        failing = total - passing
+        with_warn = int((subset["_errors"] != "").sum()) - failing
+        rows.append({
+            column: value,
+            "Total": total,
+            "Passing": passing,
+            "Failing": failing,
+            "With warnings": with_warn,
+            "% failing": _pct(failing, total),
+        })
+    return pd.DataFrame(rows).sort_values("Failing", ascending=False)
+
+
+# ---------- Header ----------
+st.title("Dashboard")
+st.caption(
+    "Browse a validated dataset by category. This stage expects a dataset that "
+    "has already been through Validation - it must contain `_errors` and "
+    "`_is_valid` columns."
+)
+st.divider()
+
+
+# ---------- Upload ----------
+if not st.session_state.dash_loaded:
+    st.subheader("Upload a validated dataset")
+    uploaded = st.file_uploader(
+        "Validated dataset (Excel)",
+        type=["xlsx", "xls"],
+        key="dash_upload",
+        help="Must contain _errors and _is_valid columns.",
+    )
+
+    if uploaded is not None:
+        try:
+            # Read sheet 0 for the data, and optionally a "Rules" sheet for rich
+            # rule details on the Dashboard's "By Failure Reason" panel.
+            xl = pd.ExcelFile(uploaded)
+            df = pd.read_excel(xl, sheet_name=0)
+            rules_df = None
+            if "Rules" in xl.sheet_names:
+                try:
+                    rules_df = pd.read_excel(xl, sheet_name="Rules")
+                except Exception:
+                    rules_df = None
+
+            if "_errors" not in df.columns or "_is_valid" not in df.columns:
+                st.error(
+                    "This file does not look like a validated dataset. "
+                    "Expected columns `_errors` and `_is_valid` are missing. "
+                    "Run Validation first."
+                )
+            else:
+                st.session_state.dash_df = df
+                st.session_state.dash_rules_df = rules_df
+                st.session_state.dash_file_name = uploaded.name
+                st.session_state.dash_loaded = True
+                st.rerun()
+        except Exception as e:
+            st.error(f"Could not read file: {type(e).__name__}: {e}")
+    else:
+        st.info("Upload a validated dataset to begin.")
+
+# ---------- Results ----------
+else:
+    df = st.session_state.dash_df
+
+    top_left, top_right = st.columns([3, 1])
+    with top_left:
+        st.subheader(f"Dashboard for `{st.session_state.dash_file_name}`")
+    with top_right:
+        if st.button("Start over", use_container_width=True):
+            st.session_state.dash_loaded = False
+            st.session_state.dash_df = None
+            st.session_state.dash_rules_df = None
+            st.session_state.dash_file_name = ""
+            st.rerun()
+
+    # ---------- Filter & Search ----------
+    # Lets the user narrow the dataset (e.g. "all workers in New York") and have
+    # every metric and breakdown below reflect the filtered subset.
+    with st.expander("Filter and search", expanded=False):
+        st.caption(
+            "Narrow the dataset to a subset. Every metric and breakdown below "
+            "reflects the filtered view. Leave blank to see all rows."
+        )
+
+        # Filterable columns: everything except our internal _errors / _is_valid
+        filterable = [c for c in df.columns if c not in ("_errors", "_is_valid")]
+        fcol_a, fcol_b, fcol_c = st.columns([2, 2, 1])
+        with fcol_a:
+            filter_col = st.selectbox(
+                "Filter by column",
+                options=["(no filter)"] + filterable,
+                index=0,
+                key="dash_filter_col",
+            )
+        with fcol_b:
+            filter_val = ""
+            if filter_col != "(no filter)":
+                unique_vals = df[filter_col].dropna().astype(str).unique().tolist()
+                # If the column is short on uniques, offer a dropdown; otherwise a text box
+                if len(unique_vals) <= 25:
+                    filter_val = st.selectbox(
+                        f"Value of {filter_col}",
+                        options=[""] + sorted(unique_vals),
+                        index=0,
+                        key="dash_filter_val_select",
+                    )
+                else:
+                    filter_val = st.text_input(
+                        f"Value of {filter_col} (substring match, case-insensitive)",
+                        value="",
+                        key="dash_filter_val_text",
+                    )
+            else:
+                st.markdown("&nbsp;")  # spacer so the row stays aligned
+
+        with fcol_c:
+            status_filter = st.selectbox(
+                "Status",
+                options=["All", "Passing only", "Failing only", "With warnings"],
+                index=0,
+                key="dash_status_filter",
+            )
+
+    # Build the filtered view
+    filtered_df = df.copy()
+    if filter_col != "(no filter)" and filter_val:
+        col_as_str = filtered_df[filter_col].astype(str)
+        # Exact match for dropdown, substring for text box
+        unique_vals = df[filter_col].dropna().astype(str).unique().tolist()
+        if len(unique_vals) <= 25:
+            filtered_df = filtered_df[col_as_str == filter_val]
+        else:
+            filtered_df = filtered_df[col_as_str.str.contains(filter_val, case=False, na=False)]
+
+    if status_filter == "Passing only":
+        filtered_df = filtered_df[filtered_df["_is_valid"]]
+    elif status_filter == "Failing only":
+        filtered_df = filtered_df[~filtered_df["_is_valid"]]
+    elif status_filter == "With warnings":
+        filtered_df = filtered_df[filtered_df["_errors"] != ""]
+
+    # Show a small banner so the user always knows whether a filter is in effect
+    if len(filtered_df) != len(df):
+        st.info(
+            f"Filtered view: showing {len(filtered_df)} of {len(df)} rows. "
+            f"All metrics below reflect this subset."
+        )
+
+    if len(filtered_df) == 0:
+        st.warning("No rows match the current filter. Adjust the filter or clear it to see data.")
+        st.stop()
+
+    # Headline metrics (computed on the filtered view)
+    total = len(filtered_df)
+    passing = int(filtered_df["_is_valid"].sum())
+    failing = total - passing
+    with_warn = int((filtered_df["_errors"] != "").sum()) - failing
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total rows", total)
+    m2.metric("Passing", f"{passing} ({_pct(passing, total)})")
+    m3.metric("Failing", f"{failing} ({_pct(failing, total)})")
+    m4.metric("With warnings", with_warn)
+
+    st.divider()
+
+    # All breakdowns below operate on the filtered view
+    df = filtered_df
+
+    # Country
+    country_col = None
+    for candidate in ["Country", "Country Code", "country"]:
+        if candidate in df.columns:
+            country_col = candidate
+            break
+
+    if country_col:
+        st.markdown("#### By Country")
+        st.dataframe(
+            _breakdown_by_column(df, country_col),
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("No Country column found. Skipping country breakdown.")
+
+    # Worker Type
+    wt_col = None
+    for candidate in ["Worker Type", "Worker_Type", "worker_type"]:
+        if candidate in df.columns:
+            wt_col = candidate
+            break
+
+    if wt_col:
+        st.markdown("#### By Worker Type")
+        st.dataframe(
+            _breakdown_by_column(df, wt_col),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    # Employment Status
+    es_col = None
+    for candidate in ["Employment Status", "Status", "employment_status"]:
+        if candidate in df.columns:
+            es_col = candidate
+            break
+
+    if es_col:
+        st.markdown("#### By Employment Status")
+        st.dataframe(
+            _breakdown_by_column(df, es_col),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    # Severity
+    st.markdown("#### By Severity")
+    severity_counts = Counter()
+    for err_str in df["_errors"]:
+        for _, sev in _parse_error_tags(err_str):
+            if sev:
+                severity_counts[sev] += 1
+    if severity_counts:
+        sev_df = pd.DataFrame(
+            [{"Severity": s, "Failures (across all rows)": c}
+             for s, c in severity_counts.items()]
+        ).sort_values("Failures (across all rows)", ascending=False)
+        st.dataframe(sev_df, use_container_width=True, hide_index=True)
+    else:
+        st.success("No failures across any severity.")
+
+    # Failure reason (per-rule)
+    st.markdown("#### By Failure Reason")
+    rule_counter = Counter()
+    rule_severity = {}
+    for err_str in df["_errors"]:
+        for rid, sev in _parse_error_tags(err_str):
+            rule_counter[rid] += 1
+            rule_severity[rid] = sev
+
+    rules_df = st.session_state.dash_rules_df  # may be None
+    if rule_counter:
+        # Build a lookup of rule details if the rules sheet is available
+        rule_lookup = {}
+        if rules_df is not None and "rule_id" in rules_df.columns:
+            for _, r in rules_df.iterrows():
+                rid = str(r.get("rule_id", "")).strip()
+                if not rid:
+                    continue
+                field = str(r.get("field", "")).strip()
+                op = str(r.get("operation", "")).strip()
+                param = r.get("parameter", "")
+                param_str = "" if pd.isna(param) else str(param).strip()
+                # The condition is the field + operation, with parameter if present
+                if param_str:
+                    condition = f"{field} {op}({param_str})"
+                else:
+                    condition = f"{field} {op}"
+                rule_lookup[rid] = {
+                    "Description": str(r.get("description", "")).strip(),
+                    "Field": field,
+                    "Operation": op,
+                    "Parameter": param_str,
+                    "Condition": condition,
+                }
+
+        rows = []
+        for rid, count in rule_counter.most_common():
+            row = {
+                "Rule": rid,
+                "Severity": rule_severity.get(rid, ""),
+                "Rows affected": count,
+                "% of dataset": _pct(count, total),
+            }
+            if rid in rule_lookup:
+                row.update({
+                    "Condition": rule_lookup[rid]["Condition"],
+                    "Description": rule_lookup[rid]["Description"],
+                })
+            else:
+                row["Condition"] = ""
+                row["Description"] = ""
+            rows.append(row)
+
+        reason_df = pd.DataFrame(rows)
+        # Order columns deliberately: identity, hit stats, then context
+        col_order = ["Rule", "Severity", "Rows affected", "% of dataset",
+                     "Condition", "Description"]
+        reason_df = reason_df[[c for c in col_order if c in reason_df.columns]]
+        st.dataframe(reason_df, use_container_width=True, hide_index=True)
+
+        if rules_df is None:
+            st.caption(
+                "Tip: this validated dataset does not include a Rules sheet, so "
+                "Condition and Description are empty. Re-run System Validation "
+                "and use its Download button to get a file that includes rule details."
+            )
+    else:
+        st.success("No failures.")
+
+    # Matching rows (the actual data behind the breakdowns)
+    st.divider()
+    with st.expander(f"Matching rows ({len(df)})", expanded=False):
+        st.caption(
+            "The rows that match the current filter. Use the Filter and search "
+            "panel at the top to narrow this down."
+        )
+        st.dataframe(df, use_container_width=True, hide_index=True)
