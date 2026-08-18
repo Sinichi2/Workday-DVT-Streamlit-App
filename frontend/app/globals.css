@@ -1,34 +1,46 @@
 @import "tailwindcss";
 
+/* Dark mode is class-driven (`<html class="dark">`) instead of the Tailwind v4
+   default of prefers-color-scheme, so the topbar toggle can override the OS. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ---------------------------------------------------------------------------
+   DESIGN TOKENS - the only place colors are defined.
+   Sampled from the Valigo Figma dashboard, then tuned so every text/background
+   pair clears WCAG 2.1 AA (>=4.5:1 for normal text) in BOTH themes - verified
+   with a contrast calculator, not by eye. AA is a hard product requirement.
+   TODO(figma): when the file reconnects, re-check against the real variables.
+     light: node-id 153-4824 (expanded), 125-1342 (collapsed), 124-716 (menu)
+     dark:  node-id 144-3495 (expanded), 144-4122 (collapsed + menu)
+
+   Two-token pattern for anything that appears as both a FILL and as TEXT:
+     --<x>        vivid, used for bar fills / solid backgrounds
+     --<x>-text   AA-legible on the matching subtle/surface, used for text+icons
+   Nothing below this block hardcodes a color.
+   --------------------------------------------------------------------------- */
 :root {
   --background: #efece6;        /* warm-beige page canvas */
   --surface: #ffffff;           /* cards */
   --surface-muted: #f4f2ec;     /* sidebar, insight sub-cards, tracks */
   --border: #e6e2d9;
   --foreground: #1a1a17;
-  --muted-foreground: #7a756c;
+  --muted-foreground: #6a6457;  /* AA on white AND on surface-muted */
 
-  --accent: #4457d4;            /* indigo - active nav, avatar, links */
+  --accent: #3f51c9;            /* indigo fill: avatar, active bar, primary btn */
   --accent-hover: #3646b8;
   --accent-foreground: #ffffff;
-  --accent-subtle: #e7eafb;     /* "Fix with AI" button bg */
+  --accent-subtle: #e7eafb;     /* "Fix with AI" bg, active-nav bg */
+  --accent-strong: #3f51c9;     /* accent as TEXT/ICON (AA on white + subtle) */
 
-  --success: #159a52;           /* quality score + positive deltas */
-  --success-subtle: #e7f4ec;
-  --danger: #d64545;            /* negative deltas */
-  --danger-subtle: #fbe0e0;
+  --success: #159a52;           /* vivid green - the big score number (large text) */
+  --success-text: #0f8043;      /* AA green for small delta text */
+  --danger: #c5372b;            /* negative delta text - AA on white */
 
-  /* Severity scale: strong = bar + pill text, subtle = pill bg */
-  --critical: #b32b2b;
-  --critical-subtle: #fbe0e0;
-  --high: #c2691c;
-  --high-subtle: #f7e6d2;
-  --medium: #b8952a;
-  --medium-subtle: #f5edcf;
-  --low: #a29a8c;
-  --low-subtle: #eae7e0;
+  /* Severity scale. Fill = bar/segment; -text = AA-legible label on -subtle. */
+  --critical: #b32b2b;   --critical-text: #a11f1f;   --critical-subtle: #fbe0e0;
+  --high: #c2691c;       --high-text: #8a4410;       --high-subtle: #f7e6d2;
+  --medium: #b8952a;     --medium-text: #6d520e;     --medium-subtle: #f5edcf;
+  --low: #a29a8c;        --low-text: #575145;        --low-subtle: #eae7e0;
 }
 
 .dark {
@@ -39,27 +51,23 @@
   --foreground: #e6e8ec;
   --muted-foreground: #8b93a1;
 
-  --accent: #5b6ef0;
+  --accent: #4f5ed9;            /* darkened so white foreground clears AA */
   --accent-hover: #7482f4;
   --accent-foreground: #ffffff;
   --accent-subtle: #232a45;
+  --accent-strong: #9fb0ff;     /* light indigo - AA on dark surface + subtle */
 
   --success: #4ade80;
-  --success-subtle: #123122;
+  --success-text: #4ade80;
   --danger: #f06a6a;
-  --danger-subtle: #3a1620;
 
-  --critical: #e0484d;
-  --critical-subtle: #351720;
-  --high: #e08a3c;
-  --high-subtle: #35240f;
-  --medium: #e0c04c;
-  --medium-subtle: #322a0f;
-  --low: #9aa2ae;
-  --low-subtle: #242a33;
+  --critical: #e0484d;   --critical-text: #f2686b;   --critical-subtle: #351720;
+  --high: #e08a3c;       --high-text: #e08a3c;       --high-subtle: #35240f;
+  --medium: #e0c04c;     --medium-text: #e0c04c;     --medium-subtle: #322a0f;
+  --low: #9aa2ae;        --low-text: #9aa2ae;        --low-subtle: #242a33;
 }
 
-/* Expose the tokens as Tailwind utilities: bg-surface, text-critical, ... */
+/* Expose tokens as Tailwind utilities: bg-surface, text-critical-text, ... */
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
@@ -72,19 +80,23 @@
   --color-accent-hover: var(--accent-hover);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent-subtle: var(--accent-subtle);
+  --color-accent-strong: var(--accent-strong);
 
   --color-success: var(--success);
-  --color-success-subtle: var(--success-subtle);
+  --color-success-text: var(--success-text);
   --color-danger: var(--danger);
-  --color-danger-subtle: var(--danger-subtle);
 
   --color-critical: var(--critical);
+  --color-critical-text: var(--critical-text);
   --color-critical-subtle: var(--critical-subtle);
   --color-high: var(--high);
+  --color-high-text: var(--high-text);
   --color-high-subtle: var(--high-subtle);
   --color-medium: var(--medium);
+  --color-medium-text: var(--medium-text);
   --color-medium-subtle: var(--medium-subtle);
   --color-low: var(--low);
+  --color-low-text: var(--low-text);
   --color-low-subtle: var(--low-subtle);
 
   --font-sans: var(--font-geist-sans);
@@ -94,4 +106,12 @@
 body {
   background: var(--background);
   color: var(--foreground);
+}
+
+/* Keyboard focus: one visible ring for every interactive element. Mouse users
+   don't see it (:focus-visible), keyboard/SR users always do - AA requirement. */
+:where(a, button, [role="button"], input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+  border-radius: 6px;
 }

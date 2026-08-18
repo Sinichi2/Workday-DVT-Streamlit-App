@@ -1,97 +1,122 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Pencil, Sparkles, TrendingDown, TrendingUp, Wand2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { AlertTriangle, Info, Pencil, RotateCw, Sparkles, TrendingDown, TrendingUp, Wand2 } from "lucide-react";
 import { Card } from "@/app/components/card/Card";
 import { Button } from "@/app/components/button/Button";
-import { Severity, DashboardData } from "@/app/data/subscriber/subscriber.dashboard_data";
+import {
+  DUMMY_DATA,
+  SEVERITY_WORKDAY,
+  type DashboardData,
+  type Delta as DeltaT,
+  type Severity,
+} from "@/app/data/subscriber/subscriber.dashboard_data";
 
-// change URL once the API exists.
+// ---------------------------------------------------------------------------
+// BACKEND WIRING  ← change this URL once the API exists.
+// TODO(backend): point DASHBOARD_ENDPOINT at the real subscriber dashboard API.
+// It must return JSON in the DashboardData shape. On failure we NEVER silently
+// render DUMMY_DATA as if it were live: in dev we show the dummy with a visible
+// "demo data" banner; in production we show an honest error card with retry.
 const DASHBOARD_ENDPOINT = "https://api.valigo.local/subscriber/dashboard";
+const IS_DEV = process.env.NODE_ENV !== "production";
+// ---------------------------------------------------------------------------
 
-
-const DUMMY_DATA: DashboardData = {
-  qualityScore: "97.3%",
-  recordsEvaluated: "4,218 records evaluated",
-  qualityDelta: "+1.2% from last run",
-  errorTotal: 76,
-  distribution: { critical: 3, high: 11, medium: 24, low: 38 },
-  stats: [
-    { label: "Data Integrity", sublabel: "Field mapping coverage", value: "83.3%", delta: "−0.4%", trend: "down" },
-    { label: "Total Errors", sublabel: "Across all severity levels", value: "76", delta: "−14 from last run", trend: "up" },
-    { label: "Records Passed", sublabel: "Out of 4,218 total", value: "4,142", delta: "+60 from last run", trend: "up" },
-  ],
-  breakdown: [
-    { severity: "critical", label: "Critical", count: 3, note: "Missing manager assignments" },
-    { severity: "high", label: "High", count: 11, note: "Pay group & cost center lookup mismatches" },
-    { severity: "medium", label: "Medium", count: 24, note: "Date formats, whitespace, currency symbols" },
-    { severity: "low", label: "Low", count: 38, note: "Email casing, minor trim issues" },
-  ],
-  insights: [
-    {
-      title: "3 critical — manager not assigned",
-      body: "Employee IDs 10042, 10077, 10213 have no manager assigned. Will block Workday org hierarchy load.",
-      actions: ["manual-required"],
-    },
-    {
-      title: "Pay group mismatch ×11",
-      body: "“BW-US” does not match Workday reference table.",
-      actions: ["ai", "manual"],
-    },
-    {
-      title: "ZIP whitespace ×24",
-      body: "Leading or trailing spaces in Postal_Code field.",
-      actions: ["ai", "manual"],
-    },
-  ],
-};
-
-// Severity → token classes
+// Severity → token classes (literal strings so Tailwind can see them).
+// `bar` = fill; `pill`/`text` use the AA-legible -text tokens.
 const SEV: Record<Severity, { bar: string; pill: string; text: string }> = {
-  critical: { bar: "bg-critical", pill: "bg-critical-subtle text-critical", text: "text-critical" },
-  high: { bar: "bg-high", pill: "bg-high-subtle text-high", text: "text-high" },
-  medium: { bar: "bg-medium", pill: "bg-medium-subtle text-medium", text: "text-medium" },
-  low: { bar: "bg-low", pill: "bg-low-subtle text-low", text: "text-muted-foreground" },
+  critical: { bar: "bg-critical", pill: "bg-critical-subtle text-critical-text", text: "text-critical-text" },
+  high: { bar: "bg-high", pill: "bg-high-subtle text-high-text", text: "text-high-text" },
+  medium: { bar: "bg-medium", pill: "bg-medium-subtle text-medium-text", text: "text-medium-text" },
+  low: { bar: "bg-low", pill: "bg-low-subtle text-low-text", text: "text-low-text" },
 };
+
+type LoadState =
+  | { status: "loading" }
+  | { status: "ready"; data: DashboardData; demo: boolean }
+  | { status: "error"; message: string };
 
 export default function SubscriberDashboard() {
-  const [data, setData] = useState<DashboardData>(DUMMY_DATA);
+  const [state, setState] = useState<LoadState>({ status: "loading" });
 
-  useEffect(() => {
-    let alive = true;
-    fetch(DASHBOARD_ENDPOINT)
-      .then((r) => r.json())
-      .then((d) => alive && setData(d))
-      .catch(() => {
-        /* backend not up yet — keep DUMMY_DATA */
-      });
-    return () => {
-      alive = false;
-    };
+  const load = useCallback(async (signal?: AbortSignal) => {
+    setState({ status: "loading" });
+    try {
+      const res = await fetch(DASHBOARD_ENDPOINT, { signal });
+      if (!res.ok) throw new Error(`Server responded ${res.status}`);
+      const data = (await res.json()) as DashboardData;
+      setState({ status: "ready", data, demo: false });
+    } catch (err) {
+      if (signal?.aborted) return;
+      // Backend not up yet. Dev: show dummy WITH a banner. Prod: honest error.
+      if (IS_DEV) {
+        setState({ status: "ready", data: DUMMY_DATA, demo: true });
+      } else {
+        setState({ status: "error", message: err instanceof Error ? err.message : "Unknown error" });
+      }
+    }
   }, []);
 
-  const maxCount = Math.max(...data.breakdown.map((b) => b.count));
+  useEffect(() => {
+    const ctrl = new AbortController();
+    load(ctrl.signal);
+    return () => ctrl.abort();
+  }, [load]);
 
   return (
     <div className="mx-auto max-w-6xl">
       <h1 className="mb-6 text-3xl font-semibold">Dashboard</h1>
+      {state.status === "loading" && <SkeletonGrid />}
+      {state.status === "error" && <ErrorCard message={state.message} onRetry={() => load()} />}
+      {state.status === "ready" && <DashboardBody data={state.data} demo={state.demo} onRetry={() => load()} />}
+    </div>
+  );
+}
+
+function DashboardBody({ data, demo, onRetry }: { data: DashboardData; demo: boolean; onRetry: () => void }) {
+  // Guard against an empty breakdown from the real API (Math.max() = -Infinity).
+  const maxCount = data.breakdown.length ? Math.max(...data.breakdown.map((b) => b.count)) : 1;
+  const crit = data.distribution.critical;
+
+  return (
+    <>
+      {demo && <DemoBanner onRetry={onRetry} />}
+
+      {/* Consequence-first: the blocking hard-stops lead, above the reassuring score. */}
+      {crit > 0 && (
+        <div
+          role="alert"
+          className="mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-critical/40 bg-critical-subtle px-4 py-3"
+        >
+          <AlertTriangle size={18} className="text-critical-text" aria-hidden />
+          <p className="flex-1 text-sm">
+            <span className="font-semibold text-critical-text">
+              {crit} critical {crit === 1 ? "error" : "errors"} will block the Workday load.
+            </span>{" "}
+            <span className="text-muted-foreground">Resolve the Hard Stops before go-live.</span>
+          </p>
+          <a
+            href="#insights"
+            className="rounded-lg border border-critical/50 px-3 py-1.5 text-xs font-medium text-critical-text hover:bg-critical/10"
+          >
+            Review required fixes
+          </a>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {/* Data Quality Score */}
         <Card className="p-5">
-          <div className="flex items-center justify-between">
-            <Label>Data Quality Score</Label>
-            <Sparkles size={16} className="text-muted-foreground/60" />
-          </div>
+          <Label>Data Quality Score</Label>
           <div className="mt-3 text-6xl font-bold text-success">{data.qualityScore}</div>
-          <div className="mt-3 flex items-center justify-between">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
             <span className="text-sm text-muted-foreground">{data.recordsEvaluated}</span>
-            <Delta trend="up" text={data.qualityDelta} />
+            <Delta delta={data.qualityDelta} />
           </div>
 
           <div className="mt-6">
-            <Label>Error Distribution · {data.errorTotal} total</Label>
-            <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-surface-muted">
+            <Label>Error Distribution</Label>
+            <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-surface-muted" aria-hidden>
               {(Object.keys(data.distribution) as Severity[]).map((s) => (
                 <div
                   key={s}
@@ -100,11 +125,12 @@ export default function SubscriberDashboard() {
                 />
               ))}
             </div>
-            <div className="mt-2 flex gap-4 text-xs">
-              <span className={SEV.critical.text}>{data.distribution.critical} critical</span>
-              <span className={SEV.high.text}>{data.distribution.high} high</span>
-              <span className={SEV.medium.text}>{data.distribution.medium} med</span>
-              <span className="text-muted-foreground">{data.distribution.low} low</span>
+            <div className="mt-2 flex flex-wrap gap-4 text-xs">
+              {(Object.keys(data.distribution) as Severity[]).map((s) => (
+                <span key={s} className={SEV[s].text}>
+                  {data.distribution[s]} {s === "medium" ? "med" : s}
+                </span>
+              ))}
             </div>
           </div>
         </Card>
@@ -112,14 +138,17 @@ export default function SubscriberDashboard() {
         {/* Stacked stats */}
         <Card className="divide-y divide-border">
           {data.stats.map((s) => (
-            <div key={s.label} className="flex items-start justify-between px-5 py-[18px]">
-              <div>
-                <Label>{s.label}</Label>
+            <div key={s.label} className="flex items-start justify-between gap-4 px-5 py-[18px]">
+              <div className="min-w-0">
+                <span className="flex items-center gap-1.5">
+                  <Label>{s.label}</Label>
+                  <InfoDot hint={s.hint} />
+                </span>
                 <div className="mt-1 text-sm text-muted-foreground">{s.sublabel}</div>
               </div>
-              <div className="text-right">
+              <div className="shrink-0 text-right">
                 <div className="text-2xl font-semibold">{s.value}</div>
-                <Delta trend={s.trend} text={s.delta} className="mt-1" />
+                <Delta delta={s.delta} className="mt-1" />
               </div>
             </div>
           ))}
@@ -134,42 +163,52 @@ export default function SubscriberDashboard() {
           <div className="flex flex-col gap-4">
             {data.breakdown.map((b) => (
               <div key={b.severity} className="flex items-center gap-3">
-                <span className={`w-16 shrink-0 rounded-md px-2 py-1 text-center text-xs font-medium ${SEV[b.severity].pill}`}>
+                <span
+                  className={`w-16 shrink-0 rounded-md px-2 py-1 text-center text-xs font-medium ${SEV[b.severity].pill}`}
+                  title={`Workday: ${SEVERITY_WORKDAY[b.severity]}`}
+                >
                   {b.label}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="h-1.5 overflow-hidden rounded-full bg-surface-muted">
                     <div className={`h-full ${SEV[b.severity].bar}`} style={{ width: `${(b.count / maxCount) * 100}%` }} />
                   </div>
-                  <div className="mt-1.5 truncate text-xs text-muted-foreground">{b.note}</div>
+                  <div className="mt-1.5 truncate text-xs text-muted-foreground" title={b.note}>
+                    {b.note}
+                  </div>
                 </div>
                 <span className="w-6 shrink-0 text-right text-sm font-semibold">{b.count}</span>
-                <Sparkles size={14} className="shrink-0 text-muted-foreground/50" />
               </div>
             ))}
           </div>
+          {/* Keep Valigo's 4-tier rollup, but spell out the Workday mapping. */}
+          <p className="mt-4 border-t border-border pt-3 text-xs text-muted-foreground">
+            Workday severity: <span className={SEV.critical.text}>Critical → Hard Stop</span> ·{" "}
+            <span className={SEV.high.text}>High</span>/<span className={SEV.medium.text}>Medium → Soft Warning</span> ·{" "}
+            <span className={SEV.low.text}>Low → Info</span>
+          </p>
         </Card>
 
         {/* AI Insights */}
-        <Card className="p-5">
+        <Card className="p-5" id="insights">
           <div className="mb-4 flex items-center gap-2">
-            <Sparkles size={17} className="text-accent" />
-            <h2 className="text-base font-semibold text-accent">AI Insights</h2>
+            <Sparkles size={17} className="text-accent-strong" aria-hidden />
+            <h2 className="text-base font-semibold text-accent-strong">AI Insights</h2>
           </div>
           <div className="flex flex-col gap-3">
             {data.insights.map((ins) => (
               <div key={ins.title} className="rounded-xl border border-border bg-surface-muted p-4">
                 <div className="text-sm font-semibold">{ins.title}</div>
                 <p className="mt-1 text-sm text-muted-foreground">{ins.body}</p>
-                <div className="mt-3 flex gap-2">
+                <div className="mt-3 flex flex-wrap gap-2">
                   {ins.actions.map((a) =>
                     a === "ai" ? (
                       <Button key={a} variant="ai">
-                        <Wand2 size={13} /> Fix with AI
+                        <Wand2 size={13} aria-hidden /> Fix with AI
                       </Button>
                     ) : (
                       <Button key={a} variant="outline">
-                        <Pencil size={13} /> Fix Manually{a === "manual-required" && " (Required)"}
+                        <Pencil size={13} aria-hidden /> Fix Manually{a === "manual-required" && " (Required)"}
                       </Button>
                     ),
                   )}
@@ -179,7 +218,7 @@ export default function SubscriberDashboard() {
           </div>
         </Card>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -187,13 +226,70 @@ function Label({ children }: { children: React.ReactNode }) {
   return <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{children}</span>;
 }
 
-function Delta({ trend, text, className = "" }: { trend: "up" | "down"; text: string; className?: string }) {
-  const Icon = trend === "down" ? TrendingDown : TrendingUp;
-  const color = trend === "down" ? "text-danger" : "text-success";
+function InfoDot({ hint }: { hint: string }) {
+  return (
+    <button type="button" className="text-muted-foreground/70 hover:text-foreground" title={hint} aria-label={hint}>
+      <Info size={12} aria-hidden />
+    </button>
+  );
+}
+
+function Delta({ delta, className = "" }: { delta: DeltaT; className?: string }) {
+  const Icon = delta.direction === "down" ? TrendingDown : TrendingUp;
+  const color = delta.good ? "text-success-text" : "text-danger";
   return (
     <span className={`inline-flex items-center gap-1 text-xs font-medium ${color} ${className}`}>
-      <Icon size={13} />
-      {text}
+      <Icon size={13} aria-hidden />
+      {delta.text}
     </span>
+  );
+}
+
+function DemoBanner({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-high/40 bg-high-subtle px-4 py-3">
+      <Info size={18} className="text-high-text" aria-hidden />
+      <p className="flex-1 text-sm text-high-text">
+        <span className="font-semibold">Demo data.</span> The backend isn’t connected — these figures are sample values, not a real run.
+      </p>
+      <button
+        onClick={onRetry}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-high/50 px-3 py-1.5 text-xs font-medium text-high-text hover:bg-high/10"
+      >
+        <RotateCw size={13} aria-hidden /> Retry
+      </button>
+    </div>
+  );
+}
+
+function ErrorCard({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <Card className="flex flex-col items-center gap-3 p-10 text-center">
+      <AlertTriangle size={28} className="text-danger" aria-hidden />
+      <div>
+        <div className="text-base font-semibold">Couldn’t load the dashboard</div>
+        <p className="mt-1 text-sm text-muted-foreground">{message}. Check your connection and try again.</p>
+      </div>
+      <Button variant="primary" onClick={onRetry}>
+        <RotateCw size={14} aria-hidden /> Retry
+      </Button>
+    </Card>
+  );
+}
+
+function SkeletonGrid() {
+  return (
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2" aria-busy="true" aria-label="Loading dashboard">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <Card key={i} className="p-5">
+          <div className="animate-pulse space-y-4">
+            <div className="h-3 w-32 rounded bg-surface-muted" />
+            <div className="h-10 w-40 rounded bg-surface-muted" />
+            <div className="h-2 w-full rounded bg-surface-muted" />
+            <div className="h-2 w-2/3 rounded bg-surface-muted" />
+          </div>
+        </Card>
+      ))}
+    </div>
   );
 }

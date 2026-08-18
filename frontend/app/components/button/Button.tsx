@@ -4,7 +4,7 @@ type Variant = "primary" | "ai" | "outline";
 
 const variants: Record<Variant, string> = {
   primary: "bg-accent text-accent-foreground hover:bg-accent-hover",
-  ai: "bg-accent-subtle text-accent hover:brightness-95",
+  ai: "bg-accent-subtle text-accent-strong hover:brightness-95",
   outline: "border border-border bg-surface text-foreground hover:bg-surface-muted",
 };
 
