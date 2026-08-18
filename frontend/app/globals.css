@@ -1,26 +1,97 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #efece6;        /* warm-beige page canvas */
+  --surface: #ffffff;           /* cards */
+  --surface-muted: #f4f2ec;     /* sidebar, insight sub-cards, tracks */
+  --border: #e6e2d9;
+  --foreground: #1a1a17;
+  --muted-foreground: #7a756c;
+
+  --accent: #4457d4;            /* indigo - active nav, avatar, links */
+  --accent-hover: #3646b8;
+  --accent-foreground: #ffffff;
+  --accent-subtle: #e7eafb;     /* "Fix with AI" button bg */
+
+  --success: #159a52;           /* quality score + positive deltas */
+  --success-subtle: #e7f4ec;
+  --danger: #d64545;            /* negative deltas */
+  --danger-subtle: #fbe0e0;
+
+  /* Severity scale: strong = bar + pill text, subtle = pill bg */
+  --critical: #b32b2b;
+  --critical-subtle: #fbe0e0;
+  --high: #c2691c;
+  --high-subtle: #f7e6d2;
+  --medium: #b8952a;
+  --medium-subtle: #f5edcf;
+  --low: #a29a8c;
+  --low-subtle: #eae7e0;
 }
 
+.dark {
+  --background: #0c0f14;
+  --surface: #151a22;
+  --surface-muted: #1b212b;
+  --border: #232a35;
+  --foreground: #e6e8ec;
+  --muted-foreground: #8b93a1;
+
+  --accent: #5b6ef0;
+  --accent-hover: #7482f4;
+  --accent-foreground: #ffffff;
+  --accent-subtle: #232a45;
+
+  --success: #4ade80;
+  --success-subtle: #123122;
+  --danger: #f06a6a;
+  --danger-subtle: #3a1620;
+
+  --critical: #e0484d;
+  --critical-subtle: #351720;
+  --high: #e08a3c;
+  --high-subtle: #35240f;
+  --medium: #e0c04c;
+  --medium-subtle: #322a0f;
+  --low: #9aa2ae;
+  --low-subtle: #242a33;
+}
+
+/* Expose the tokens as Tailwind utilities: bg-surface, text-critical, ... */
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
   --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-subtle: var(--accent-subtle);
+
+  --color-success: var(--success);
+  --color-success-subtle: var(--success-subtle);
+  --color-danger: var(--danger);
+  --color-danger-subtle: var(--danger-subtle);
+
+  --color-critical: var(--critical);
+  --color-critical-subtle: var(--critical-subtle);
+  --color-high: var(--high);
+  --color-high-subtle: var(--high-subtle);
+  --color-medium: var(--medium);
+  --color-medium-subtle: var(--medium-subtle);
+  --color-low: var(--low);
+  --color-low-subtle: var(--low-subtle);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
 }
