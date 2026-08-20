@@ -118,9 +118,9 @@ function MapColumns({ onNext }: { onNext: () => void }) {
       </Panel>
 
       <div className="flex flex-wrap items-center justify-between gap-3 pt-6">
-        <p className="text-xs text-muted-foreground-2">
+        {/* <p className="text-xs text-muted-foreground-2">
           {pending > 0 ? `${pending} mapping${pending === 1 ? "" : "s"} still need confirming` : "All mappings confirmed"}
-        </p>
+        </p> */}
         <ContinueButton
           label="Confirm Mappings & Compare"
           disabled={pending > 0}

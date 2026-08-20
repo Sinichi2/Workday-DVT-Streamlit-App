@@ -5,6 +5,15 @@ export type Severity = "critical" | "high" | "medium" | "low";
  *  "−14 errors" points down but is good (green down-arrow), not a red one. */
 export type Delta = { text: string; direction: "up" | "down"; good: boolean };
 
+/** One AI suggestion. `severity` ties it to a row of the severity breakdown, so
+ *  the sparkle on that row can open just the insights that apply to it. */
+export type Insight = {
+  severity: Severity;
+  title: string;
+  body: string;
+  actions: ("ai" | "manual" | "manual-required")[];
+};
+
 export type DashboardData = {
   qualityScore: string;
   recordsEvaluated: string;
@@ -13,7 +22,7 @@ export type DashboardData = {
   distribution: Record<Severity, number>;
   stats: { label: string; sublabel: string; hint: string; value: string; delta: Delta }[];
   breakdown: { severity: Severity; label: string; count: number; note: string }[];
-  insights: { title: string; body: string; actions: ("ai" | "manual" | "manual-required")[] }[];
+  insights: Insight[];
 };
 
 /** Valigo keeps its own 4-tier rollup (critical/high/medium/low), but the person
@@ -63,16 +72,19 @@ export const DUMMY_DATA: DashboardData = {
   ],
   insights: [
     {
+      severity: "critical",
       title: "3 critical — manager not assigned",
       body: "Employee IDs 10042, 10077, 10213 have no manager assigned. Will block Workday org hierarchy load.",
       actions: ["manual-required"],
     },
     {
+      severity: "high",
       title: "Pay group mismatch ×11",
       body: "“BW-US” does not match Workday reference table.",
       actions: ["ai", "manual"],
     },
     {
+      severity: "medium",
       title: "ZIP whitespace ×24",
       body: "Leading or trailing spaces in Postal_Code field.",
       actions: ["ai", "manual"],

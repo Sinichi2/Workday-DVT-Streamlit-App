@@ -12,3 +12,5 @@ env/
 .vscode/
 prompt_templates/
 .impeccable/
+# Local Netlify folder
+.netlify

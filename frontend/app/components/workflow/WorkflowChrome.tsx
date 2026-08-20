@@ -15,11 +15,11 @@ export function WorkflowHeader({
 }) {
   return (
     <header>
-      <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs">
+      {/* <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs">
         <span className="text-muted-foreground-2">Workflow</span>
         <ChevronRight size={12} className="text-muted-foreground-2" aria-hidden />
         <span className="text-accent-strong">{crumb}</span>
-      </nav>
+      </nav> */}
       <h1 className="pt-3 text-[22px] font-semibold leading-[33px]">{title}</h1>
       {subtitle && <p className="pt-2 text-sm text-muted-foreground">{subtitle}</p>}
     </header>
