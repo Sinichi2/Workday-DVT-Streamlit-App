@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   ArrowLeftRight,
   Check,
+  CheckCircle2,
   ChevronDown,
   FileBarChart2,
   GitCompare,
@@ -14,6 +15,7 @@ import {
   Settings,
   User,
   Workflow,
+  X,
   type LucideIcon,
 } from "lucide-react";
 
@@ -29,7 +31,26 @@ type Props = {
   collapsed: boolean;
   onToggle: () => void;
   active?: string;
+  onNavigate?: (label: string) => void;
+  /** Workflow steps finished so far — drives the check badges, the n/4 counter
+   *  and the progress rule. */
+  completed?: readonly string[];
+  /** Drawer state below `lg`, where the sidebar sits off-canvas over the page.
+   *  At `lg` and up the sidebar is always a static column and this is ignored. */
+  open?: boolean;
+  onClose?: () => void;
 };
+
+/** Off-canvas below `lg`, static column from `lg` up. One element either way —
+ *  the breakpoint is expressed in CSS, so there's no viewport measuring in JS
+ *  and no second copy of the nav in the DOM. */
+function shellClass(open: boolean) {
+  return `fixed inset-y-0 left-0 z-40 flex shrink-0 flex-col border-r border-border bg-surface-muted transition-transform duration-200 lg:static lg:translate-x-0 ${
+    // `invisible` (not just translated off-screen) so a closed drawer is out of
+    // the tab order — otherwise keyboard focus walks into nav you cannot see.
+    open ? "translate-x-0" : "invisible -translate-x-full lg:visible"
+  }`;
+}
 
 /** One brand mark everywhere: the Valigo check tile. */
 function BrandMark({ size = 28 }: { size?: number }) {
@@ -43,37 +64,58 @@ function BrandMark({ size = 28 }: { size?: number }) {
   );
 }
 
-export function Sidebar({ collapsed, onToggle, active = "Dashboard" }: Props) {
+export function Sidebar({ collapsed, onToggle, active = "Dashboard", onNavigate, completed = [], open = false, onClose }: Props) {
   const [workflowOpen, setWorkflowOpen] = useState(true);
+  const doneCount = WORKFLOW_STEPS.filter((s) => completed.includes(s.label)).length;
+  const progress = `${doneCount}/${WORKFLOW_STEPS.length}`;
+  const inWorkflow = WORKFLOW_STEPS.some((s) => s.label === active);
 
   if (collapsed) {
     return (
-      <aside aria-label="Primary" className="flex w-16 shrink-0 flex-col items-center gap-1 border-r border-border bg-surface-muted py-4">
-        <button onClick={onToggle} aria-label="Expand sidebar" title="Expand sidebar" className="mb-2 rounded-md">
-          <BrandMark size={36} />
-        </button>
-        <RailButton icon={LayoutGrid} label="Dashboard" active={active === "Dashboard"} />
-        <RailButton icon={Workflow} label="Workflow" />
-        <RailButton icon={FileBarChart2} label="Reports" active={active === "Reports"} />
-        <div className="flex-1" />
-        <RailButton icon={Settings} label="Settings" />
-        <RailButton icon={HelpCircle} label="Help Center" />
-      </aside>
+      <>
+        <Backdrop open={open} onClose={onClose} />
+        <aside aria-label="Primary" className={`${shellClass(open)} w-16 items-center py-4`}>
+          <button onClick={onToggle} aria-label="Expand sidebar" title="Expand sidebar" className="mb-2 rounded-md">
+            <BrandMark size={36} />
+          </button>
+          {/* Scrolls inside the rail so the footer never leaves the viewport. */}
+          <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto">
+            <RailButton icon={LayoutGrid} label="Dashboard" active={active === "Dashboard"} onClick={() => onNavigate?.("Dashboard")} />
+            <RailButton icon={Workflow} label="Workflow" active={inWorkflow} onClick={onToggle} />
+            <RailButton icon={FileBarChart2} label="Reports" active={active === "Reports"} onClick={() => onNavigate?.("Reports")} />
+          </div>
+          <div className="flex flex-col items-center gap-1 pt-1">
+            <RailButton icon={Settings} label="Settings" active={active === "Settings"} onClick={() => onNavigate?.("Settings")} />
+            <RailButton icon={HelpCircle} label="Help Center" />
+          </div>
+        </aside>
+      </>
     );
   }
 
   return (
-    <aside aria-label="Primary" className="flex w-56 shrink-0 flex-col border-r border-border bg-surface-muted px-3 py-4">
-      {/* Brand + collapse */}
+    <>
+      <Backdrop open={open} onClose={onClose} />
+      <aside aria-label="Primary" className={`${shellClass(open)} w-64 px-3 py-4 sm:w-56`}>
+      {/* Brand + collapse. Two buttons, one per breakpoint: collapsing to a rail
+          only makes sense where the rail stays on screen, and inside the mobile
+          drawer the same slot has to dismiss it. */}
       <div className="flex items-center gap-2 px-1">
         <BrandMark size={28} />
         <span className="flex-1 text-base font-bold">Valigo</span>
         <button
           onClick={onToggle}
           aria-label="Collapse sidebar"
-          className="flex size-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-surface"
+          className="hidden size-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-surface lg:flex"
         >
           <PanelLeft size={15} aria-hidden />
+        </button>
+        <button
+          onClick={onClose}
+          aria-label="Close navigation"
+          className="flex size-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-surface lg:hidden"
+        >
+          <X size={15} aria-hidden />
         </button>
       </div>
 
@@ -85,16 +127,20 @@ export function Sidebar({ collapsed, onToggle, active = "Dashboard" }: Props) {
       </button>
 
       {/* Nav */}
-      <nav className="mt-4 flex flex-col gap-0.5">
-        <NavItem icon={LayoutGrid} label="Dashboard" active={active === "Dashboard"} />
+      {/* The nav takes the leftover height and scrolls within itself, so the
+          footer below stays pinned to the bottom of the VIEWPORT — on a short
+          screen you never scroll the page to reach Settings. */}
+      <nav className="mt-4 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
+        <NavItem icon={LayoutGrid} label="Dashboard" active={active === "Dashboard"} onClick={() => onNavigate?.("Dashboard")} />
 
         <button
           onClick={() => setWorkflowOpen((o) => !o)}
           aria-expanded={workflowOpen}
           className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium text-foreground hover:bg-surface"
         >
-          <Workflow size={17} className="text-muted-foreground" aria-hidden />
+          <Workflow size={17} className={inWorkflow ? "text-accent-strong" : "text-muted-foreground"} aria-hidden />
           <span className="flex-1 text-left">Workflow</span>
+          <span className="text-[10px] font-semibold text-muted-foreground">{progress}</span>
           <ChevronDown
             size={15}
             className={`text-muted-foreground transition-transform ${workflowOpen ? "" : "-rotate-90"}`}
@@ -104,36 +150,61 @@ export function Sidebar({ collapsed, onToggle, active = "Dashboard" }: Props) {
 
         {workflowOpen && (
           <div className="ml-4 border-l border-border pl-3">
-            {WORKFLOW_STEPS.map(({ label, icon: Icon }) => (
-              <button
-                key={label}
-                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-surface hover:text-foreground"
-              >
-                <Icon size={15} aria-hidden />
-                <span>{label}</span>
-              </button>
-            ))}
-            <div className="px-2.5 pt-1 text-right text-xs text-muted-foreground">0/4</div>
+            {WORKFLOW_STEPS.map(({ label, icon: Icon }) => {
+              const isActive = active === label;
+              const isDone = completed.includes(label);
+              return (
+                <button
+                  key={label}
+                  onClick={() => onNavigate?.(label)}
+                  aria-current={isActive ? "step" : undefined}
+                  className={`relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm ${
+                    isActive ? "bg-accent-subtle text-accent-strong" : "text-muted-foreground hover:bg-surface hover:text-foreground"
+                  }`}
+                >
+                  <Icon size={15} aria-hidden />
+                  <span className="flex-1 text-left">{label}</span>
+                  {isDone && <CheckCircle2 size={14} className="text-success-text" aria-label="completed" />}
+                  {isActive && <span className="h-3.5 w-1 rounded-full bg-accent" aria-hidden />}
+                </button>
+              );
+            })}
+            <div className="flex items-center gap-2 px-2.5 pt-2.5">
+              <div className="h-px flex-1 overflow-hidden rounded-full bg-border">
+                <div
+                  className="h-px bg-accent transition-[width]"
+                  style={{ width: `${(doneCount / WORKFLOW_STEPS.length) * 100}%` }}
+                />
+              </div>
+              <span className="text-[10px] text-muted-foreground">{progress}</span>
+            </div>
           </div>
         )}
 
-        <NavItem icon={FileBarChart2} label="Reports" active={active === "Reports"} />
+        <NavItem icon={FileBarChart2} label="Reports" active={active === "Reports"} onClick={() => onNavigate?.("Reports")} />
       </nav>
 
-      <div className="flex-1" />
-
       {/* Footer */}
-      <div className="flex flex-col gap-0.5">
-        <NavItem icon={Settings} label="Settings" />
+      <div className="flex flex-col gap-0.5 pt-2">
+        <NavItem icon={Settings} label="Settings" active={active === "Settings"} onClick={() => onNavigate?.("Settings")} />
         <NavItem icon={HelpCircle} label="Help Center" />
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }
 
-function NavItem({ icon: Icon, label, active }: { icon: LucideIcon; label: string; active?: boolean }) {
+/** Dims and closes the drawer. Only below `lg`, where the sidebar overlays the
+ *  page — at `lg` and up there is nothing to dismiss. */
+function Backdrop({ open, onClose }: { open: boolean; onClose?: () => void }) {
+  if (!open) return null;
+  return <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={onClose} aria-hidden />;
+}
+
+function NavItem({ icon: Icon, label, active, onClick }: { icon: LucideIcon; label: string; active?: boolean; onClick?: () => void }) {
   return (
     <button
+      onClick={onClick}
       aria-current={active ? "page" : undefined}
       className={`relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium ${
         active ? "bg-accent-subtle text-accent-strong" : "text-foreground hover:bg-surface"

@@ -23,7 +23,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      {/* The body IS the viewport: `h-dvh` (dynamic, so mobile browser chrome
+          doesn't cut it off) plus `overflow-hidden` means the document never
+          scrolls. Scrolling belongs to the main region, which keeps the sidebar
+          and topbar fixed on screen at every size. */}
+      <body className="flex h-dvh flex-col overflow-hidden">{children}</body>
     </html>
   );
 }
