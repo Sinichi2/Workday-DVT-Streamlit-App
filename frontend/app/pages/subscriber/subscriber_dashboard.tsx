@@ -1,29 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Info, Pencil, RotateCw, Sparkles, TrendingDown, TrendingUp, Wand2 } from "lucide-react";
+import { AlertTriangle, Info, Pencil, RotateCw, Sparkles, Wand2 } from "lucide-react";
 import { Card } from "@/app/components/card/Card";
 import { Button } from "@/app/components/button/Button";
+import { DemoBanner } from "@/app/components/banner/DemoBanner";
+import { Delta } from "@/app/components/ui/Primitives";
 import {
   DUMMY_DATA,
   SEVERITY_WORKDAY,
   type DashboardData,
-  type Delta as DeltaT,
   type Severity,
 } from "@/app/data/subscriber/subscriber.dashboard_data";
 
-// ---------------------------------------------------------------------------
-// BACKEND WIRING  ← change this URL once the API exists.
-// TODO(backend): point DASHBOARD_ENDPOINT at the real subscriber dashboard API.
-// It must return JSON in the DashboardData shape. On failure we NEVER silently
-// render DUMMY_DATA as if it were live: in dev we show the dummy with a visible
-// "demo data" banner; in production we show an honest error card with retry.
 const DASHBOARD_ENDPOINT = "https://api.valigo.local/subscriber/dashboard";
 const IS_DEV = process.env.NODE_ENV !== "production";
-// ---------------------------------------------------------------------------
 
-// Severity → token classes (literal strings so Tailwind can see them).
-// `bar` = fill; `pill`/`text` use the AA-legible -text tokens.
 const SEV: Record<Severity, { bar: string; pill: string; text: string }> = {
   critical: { bar: "bg-critical", pill: "bg-critical-subtle text-critical-text", text: "text-critical-text" },
   high: { bar: "bg-high", pill: "bg-high-subtle text-high-text", text: "text-high-text" },
@@ -80,7 +72,7 @@ function DashboardBody({ data, demo, onRetry }: { data: DashboardData; demo: boo
 
   return (
     <>
-      {demo && <DemoBanner onRetry={onRetry} />}
+      {demo && <DemoBanner onRetry={onRetry} className="mb-5" />}
 
       {/* Consequence-first: the blocking hard-stops lead, above the reassuring score. */}
       {crit > 0 && (
@@ -231,34 +223,6 @@ function InfoDot({ hint }: { hint: string }) {
     <button type="button" className="text-muted-foreground/70 hover:text-foreground" title={hint} aria-label={hint}>
       <Info size={12} aria-hidden />
     </button>
-  );
-}
-
-function Delta({ delta, className = "" }: { delta: DeltaT; className?: string }) {
-  const Icon = delta.direction === "down" ? TrendingDown : TrendingUp;
-  const color = delta.good ? "text-success-text" : "text-danger";
-  return (
-    <span className={`inline-flex items-center gap-1 text-xs font-medium ${color} ${className}`}>
-      <Icon size={13} aria-hidden />
-      {delta.text}
-    </span>
-  );
-}
-
-function DemoBanner({ onRetry }: { onRetry: () => void }) {
-  return (
-    <div className="mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-high/40 bg-high-subtle px-4 py-3">
-      <Info size={18} className="text-high-text" aria-hidden />
-      <p className="flex-1 text-sm text-high-text">
-        <span className="font-semibold">Demo data.</span> The backend isn’t connected — these figures are sample values, not a real run.
-      </p>
-      <button
-        onClick={onRetry}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-high/50 px-3 py-1.5 text-xs font-medium text-high-text hover:bg-high/10"
-      >
-        <RotateCw size={13} aria-hidden /> Retry
-      </button>
-    </div>
   );
 }
 

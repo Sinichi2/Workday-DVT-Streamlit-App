@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, LogOut, Moon, Settings, Sun, User, type LucideIcon } from "lucide-react";
+import { Bell, LogOut, Menu, Moon, Settings, Sun, User, type LucideIcon } from "lucide-react";
 
 type Props = {
   dark: boolean;
   onToggleTheme: () => void;
+  /** Opens the sidebar drawer. Only reachable below `lg`, where the sidebar is
+   *  off-canvas — above that the sidebar is always visible. */
+  onOpenNav?: () => void;
   // TODO(auth): pass the signed-in user from the session. DEFAULT_USER is a
   // placeholder for local dev only and must not render for a real account.
   user?: { name: string; role: string; initials: string };
@@ -14,7 +17,7 @@ type Props = {
 // Change to 
 const DEFAULT_USER = { name: "Shiva Cruz", role: "Workspace Owner", initials: "SC" };
 
-export function Topbar({ dark, onToggleTheme, user = DEFAULT_USER }: Props) {
+export function Topbar({ dark, onToggleTheme, onOpenNav, user = DEFAULT_USER }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   // Esc closes the account menu (keyboard parity with the click-away backdrop).
@@ -26,7 +29,17 @@ export function Topbar({ dark, onToggleTheme, user = DEFAULT_USER }: Props) {
   }, [menuOpen]);
 
   return (
-    <div className="relative flex items-center justify-end gap-3 px-8 pt-5">
+    <div className="relative flex shrink-0 items-center gap-3 px-4 pt-4 sm:px-6 lg:px-8 lg:pt-5">
+      <button
+        onClick={onOpenNav}
+        aria-label="Open navigation"
+        className="flex size-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-surface-muted lg:hidden"
+      >
+        <Menu size={20} aria-hidden />
+      </button>
+
+      <div className="flex-1" />
+
       <button
         onClick={onToggleTheme}
         aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
@@ -49,7 +62,7 @@ export function Topbar({ dark, onToggleTheme, user = DEFAULT_USER }: Props) {
         <>
           {/* click-away backdrop */}
           <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-          <div role="menu" className="absolute right-8 top-16 z-20 w-64 overflow-hidden rounded-xl border border-border bg-surface shadow-lg">
+          <div role="menu" className="absolute right-4 top-14 z-20 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-surface shadow-lg sm:right-6 lg:right-8 lg:top-16">
             <div className="flex items-center gap-3 px-4 py-3">
               <span className="flex size-9 items-center justify-center rounded-full bg-accent text-sm font-semibold text-accent-foreground">
                 {user.initials}
