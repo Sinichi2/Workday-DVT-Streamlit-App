@@ -1,31 +1,39 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ComponentType } from "react";
 import {
-  ArrowLeftRight,
   Check,
   CheckCircle2,
   ChevronDown,
-  FileBarChart2,
-  GitCompare,
-  HelpCircle,
-  LayoutGrid,
+  Menu,
   PanelLeft,
-  SearchCheck,
   Settings,
-  User,
-  Workflow,
   X,
-  type LucideIcon,
 } from "lucide-react";
+import {
+  CompareIcon,
+  DashboardIcon,
+  HelpIcon,
+  ProfileIcon,
+  ReportsIcon,
+  TransformIcon,
+  ValidateIcon,
+  WorkflowIcon,
+} from "@/app/assets/icons/subscriber";
+
+/** Anything that renders at a given pixel size and inherits color — both the
+ *  lucide icons and our own subscriber set qualify. */
+type IconType = ComponentType<{ size?: number; className?: string }>;
 
 // App navigation is fixed structure, not data — kept inline on purpose.
-const WORKFLOW_STEPS: { label: string; icon: LucideIcon }[] = [
-  { label: "Profile", icon: User },
-  { label: "Transform", icon: ArrowLeftRight },
-  { label: "Validate", icon: SearchCheck },
-  { label: "Compare", icon: GitCompare },
+const WORKFLOW_STEPS: { label: string; icon: IconType }[] = [
+  { label: "Profile", icon: ProfileIcon },
+  { label: "Transform", icon: TransformIcon },
+  { label: "Validate", icon: ValidateIcon },
+  { label: "Compare", icon: CompareIcon },
 ];
+
+const WORKSPACE = "Workday HCM Q3";
 
 type Props = {
   collapsed: boolean;
@@ -74,19 +82,32 @@ export function Sidebar({ collapsed, onToggle, active = "Dashboard", onNavigate,
     return (
       <>
         <Backdrop open={open} onClose={onClose} />
-        <aside aria-label="Primary" className={`${shellClass(open)} w-16 items-center py-4`}>
-          <button onClick={onToggle} aria-label="Expand sidebar" title="Expand sidebar" className="mb-2 rounded-md">
-            <BrandMark size={36} />
+        <aside aria-label="Primary" className={`${shellClass(open)} w-14 items-center px-2.5`}>
+          <button
+            onClick={onToggle}
+            aria-label="Expand sidebar"
+            title="Expand sidebar"
+            className="mb-3 mt-5 flex h-9 w-[35px] items-center justify-center rounded-lg text-muted-foreground hover:bg-surface"
+          >
+            <Menu size={16} aria-hidden />
           </button>
+          {/* Workspace mark. Static in the rail — switching workspaces needs the
+              expanded sidebar, where the name is readable. */}
+          <span
+            aria-hidden
+            className="mb-3 flex size-7 items-center justify-center rounded-[9px] border border-border text-sm text-muted-foreground"
+          >
+            {WORKSPACE[0]}
+          </span>
           {/* Scrolls inside the rail so the footer never leaves the viewport. */}
-          <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto">
-            <RailButton icon={LayoutGrid} label="Dashboard" active={active === "Dashboard"} onClick={() => onNavigate?.("Dashboard")} />
-            <RailButton icon={Workflow} label="Workflow" active={inWorkflow} onClick={onToggle} />
-            <RailButton icon={FileBarChart2} label="Reports" active={active === "Reports"} onClick={() => onNavigate?.("Reports")} />
+          <div className="flex min-h-0 flex-1 flex-col items-center gap-0.5 overflow-y-auto">
+            <RailButton icon={DashboardIcon} label="Dashboard" active={active === "Dashboard"} onClick={() => onNavigate?.("Dashboard")} />
+            <RailButton icon={WorkflowIcon} label="Workflow" active={inWorkflow} onClick={onToggle} />
+            <RailButton icon={ReportsIcon} label="Reports" active={active === "Reports"} onClick={() => onNavigate?.("Reports")} />
           </div>
-          <div className="flex flex-col items-center gap-1 pt-1">
+          <div className="flex flex-col items-center gap-0.5 pb-3">
             <RailButton icon={Settings} label="Settings" active={active === "Settings"} onClick={() => onNavigate?.("Settings")} />
-            <RailButton icon={HelpCircle} label="Help Center" />
+            <RailButton icon={HelpIcon} label="Help Center" />
           </div>
         </aside>
       </>
@@ -122,7 +143,7 @@ export function Sidebar({ collapsed, onToggle, active = "Dashboard", onNavigate,
       {/* Workspace switcher */}
       <button className="mt-4 flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm hover:bg-surface-muted">
         <span className="size-2 rounded-full bg-success" aria-hidden />
-        <span className="flex-1 text-left font-medium">Workday HCM Q3</span>
+        <span className="flex-1 text-left font-medium">{WORKSPACE}</span>
         <ChevronDown size={15} className="text-muted-foreground" aria-hidden />
       </button>
 
@@ -131,14 +152,14 @@ export function Sidebar({ collapsed, onToggle, active = "Dashboard", onNavigate,
           footer below stays pinned to the bottom of the VIEWPORT — on a short
           screen you never scroll the page to reach Settings. */}
       <nav className="mt-4 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
-        <NavItem icon={LayoutGrid} label="Dashboard" active={active === "Dashboard"} onClick={() => onNavigate?.("Dashboard")} />
+        <NavItem icon={DashboardIcon} label="Dashboard" active={active === "Dashboard"} onClick={() => onNavigate?.("Dashboard")} />
 
         <button
           onClick={() => setWorkflowOpen((o) => !o)}
           aria-expanded={workflowOpen}
           className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium text-foreground hover:bg-surface"
         >
-          <Workflow size={17} className={inWorkflow ? "text-accent-strong" : "text-muted-foreground"} aria-hidden />
+          <WorkflowIcon size={17} className={inWorkflow ? "text-accent-strong" : "text-muted-foreground"} aria-hidden />
           <span className="flex-1 text-left">Workflow</span>
           <span className="text-[10px] font-semibold text-muted-foreground">{progress}</span>
           <ChevronDown
@@ -181,13 +202,13 @@ export function Sidebar({ collapsed, onToggle, active = "Dashboard", onNavigate,
           </div>
         )}
 
-        <NavItem icon={FileBarChart2} label="Reports" active={active === "Reports"} onClick={() => onNavigate?.("Reports")} />
+        <NavItem icon={ReportsIcon} label="Reports" active={active === "Reports"} onClick={() => onNavigate?.("Reports")} />
       </nav>
 
       {/* Footer */}
       <div className="flex flex-col gap-0.5 pt-2">
         <NavItem icon={Settings} label="Settings" active={active === "Settings"} onClick={() => onNavigate?.("Settings")} />
-        <NavItem icon={HelpCircle} label="Help Center" />
+        <NavItem icon={HelpIcon} label="Help Center" />
       </div>
       </aside>
     </>
@@ -201,7 +222,7 @@ function Backdrop({ open, onClose }: { open: boolean; onClose?: () => void }) {
   return <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={onClose} aria-hidden />;
 }
 
-function NavItem({ icon: Icon, label, active, onClick }: { icon: LucideIcon; label: string; active?: boolean; onClick?: () => void }) {
+function NavItem({ icon: Icon, label, active, onClick }: { icon: IconType; label: string; active?: boolean; onClick?: () => void }) {
   return (
     <button
       onClick={onClick}
@@ -217,7 +238,7 @@ function NavItem({ icon: Icon, label, active, onClick }: { icon: LucideIcon; lab
   );
 }
 
-function RailButton({ icon: Icon, label, active, onClick }: { icon: LucideIcon; label: string; active?: boolean; onClick?: () => void }) {
+function RailButton({ icon: Icon, label, active, onClick }: { icon: IconType; label: string; active?: boolean; onClick?: () => void }) {
   return (
     <button
       onClick={onClick}
@@ -228,7 +249,7 @@ function RailButton({ icon: Icon, label, active, onClick }: { icon: LucideIcon; 
         active ? "bg-accent-subtle text-accent-strong" : "text-muted-foreground hover:bg-surface"
       }`}
     >
-      <Icon size={18} aria-hidden />
+      <Icon size={16} aria-hidden />
     </button>
   );
 }
