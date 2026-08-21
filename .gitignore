@@ -14,3 +14,4 @@ prompt_templates/
 .impeccable/
 # Local Netlify folder
 .netlify
+.env.*

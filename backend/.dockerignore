@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+_smoke.py
+_compare.py
+samples/
+.venv/
+.env.*

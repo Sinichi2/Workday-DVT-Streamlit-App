@@ -1,174 +1,180 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Plus } from "lucide-react";
-import { DemoBanner } from "@/app/components/banner/DemoBanner";
-import {
-  ContinueButton,
-  FilterChip,
-  WorkflowHeader,
-} from "@/app/components/workflow/WorkflowChrome";
+import { useRef, useState } from "react";
+import { FileSpreadsheet, UploadCloud, X } from "lucide-react";
+import { ContinueButton, WorkflowHeader } from "@/app/components/workflow/WorkflowChrome";
 import { Code, Panel, Th } from "@/app/components/ui/Primitives";
-import {
-  DUMMY_MAPPINGS,
-  TRANSFORM_HINT,
-  TRANSFORM_OPTIONS,
-  type Mapping,
-  type MappingStatus,
-} from "@/app/data/subscriber/subscriber.workflow_data";
+import { api, fileForm } from "@/app/lib/api";
+import { reportError } from "@/app/lib/errors";
 
-// TODO(backend): mappings should arrive from the profiling run for the uploaded
-// file. Until then these are seeded rows, flagged by the demo banner.
-const IS_DEV = process.env.NODE_ENV !== "production";
-
-const ORDER: MappingStatus[] = ["mapped", "review", "warning", "unmapped"];
-
-/** Status → token classes. Literal strings so Tailwind can see every class. */
-const STATUS: Record<MappingStatus, { label: string; chip: string; pill: string }> = {
-  mapped: { label: "Mapped", chip: "border-success/25 bg-success-subtle text-success-text", pill: "bg-success-subtle text-success-text" },
-  review: { label: "Review", chip: "border-medium/25 bg-medium-subtle text-medium-text", pill: "bg-medium-subtle text-medium-text" },
-  warning: { label: "Warning", chip: "border-high/25 bg-high-subtle text-high-text", pill: "bg-high-subtle text-high-text" },
-  unmapped: { label: "Unmapped", chip: "border-critical/25 bg-critical-subtle text-critical-text", pill: "bg-critical-subtle text-critical-text" },
+type TransformResponse = {
+  summary: {
+    source_rows: number;
+    source_columns: number;
+    target_columns: number;
+    crosswalks_loaded: number;
+    rules_total: number;
+    rules_applied: number;
+  };
+  columns: string[];
+  preview: Record<string, string | number | null>[];
+  total_rows: number;
 };
 
-type Props = { onContinue: () => void };
+type Props = { file: File | null; onContinue: () => void };
 
-export default function SubscriberWorkflowTransform({ onContinue }: Props) {
-  const [rows, setRows] = useState<Mapping[]>(DUMMY_MAPPINGS);
-  const [filter, setFilter] = useState<MappingStatus | null>(null);
+/** Stage 2. The mapping workbook defines source → target and the transform per
+ *  field, so the upload IS the configuration — there is nothing to pick here.
+ *  What the reviewer needs to see is what the mapping actually produced. */
+export default function SubscriberWorkflowTransform({ file, onContinue }: Props) {
+  const [mapping, setMapping] = useState<File | null>(null);
+  const [result, setResult] = useState<TransformResponse | null>(null);
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const counts = useMemo(
-    () =>
-      rows.reduce(
-        (acc, r) => ({ ...acc, [r.status]: acc[r.status] + 1 }),
-        { mapped: 0, review: 0, warning: 0, unmapped: 0 } as Record<MappingStatus, number>,
-      ),
-    [rows],
-  );
-
-  const visible = filter ? rows.filter((r) => r.status === filter) : rows;
-
-  function setTransform(source: string, transform: string) {
-    setRows((rs) => rs.map((r) => (r.source === source ? { ...r, transform } : r)));
+  async function run(candidate: File) {
+    if (!file) return;
+    setMapping(candidate);
+    setBusy(true);
+        setResult(null);
+    try {
+      setResult(await api.upload<TransformResponse>("/transform", fileForm({ source: file, mapping: candidate })));
+    } catch (err: unknown) {
+      reportError("workflow.transform", err);
+    } finally {
+      setBusy(false);
+    }
   }
+
+  const s = result?.summary;
 
   return (
     <div className="mx-auto w-full max-w-[845px] py-4 sm:py-6 lg:p-8">
       <WorkflowHeader
         crumb="Transform"
         title="Field Mapping & Transform"
-        subtitle="Each row reads left to right: source field → how it transforms → where it lands in Workday."
+        subtitle="Upload your mapping workbook to map the source extract into Workday's target shape."
       />
 
-      {IS_DEV && <DemoBanner className="mt-6" />}
+      {!file && (
+        <Panel className="mt-8 px-5 py-6 text-center text-sm text-muted-foreground">
+          Upload a source file on the Profile step first.
+        </Panel>
+      )}
 
-      {/* Filters. Selecting one narrows the table; "Clear" only appears while a
-          filter is active, so the unfiltered view stays quiet. */}
-      <div className="flex flex-wrap items-center gap-2 pt-8">
-        {ORDER.map((s) => (
-          <FilterChip
-            key={s}
-            tone={STATUS[s].chip}
-            label={STATUS[s].label}
-            count={counts[s]}
-            pressed={filter === s}
-            onClick={() => setFilter((f) => (f === s ? null : s))}
+      {file && (
+        <Panel className="mt-8 flex flex-wrap items-center justify-between gap-4 px-5 py-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent-subtle">
+              <FileSpreadsheet size={17} className="text-accent-strong" aria-hidden />
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">{mapping ? mapping.name : "No mapping workbook yet"}</p>
+              <p className="truncate text-xs text-muted-foreground-2">
+                Source: {file.name} · .xlsx with a mappings sheet and any crosswalks
+              </p>
+            </div>
+          </div>
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".xlsx,.xls,.xlsm"
+            className="sr-only"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void run(f);
+            }}
           />
-        ))}
-        {filter && (
-          <button onClick={() => setFilter(null)} className="px-3 py-1.5 text-xs font-medium text-muted-foreground-2 hover:text-foreground">
-            Clear
-          </button>
-        )}
-        <button
-          onClick={() =>
-            setRows((rs) => [
-              ...rs,
-              { source: "NEW_FIELD", sourceLabel: "unnamed", transform: "Direct", target: "", status: "unmapped" },
-            ])
-          }
-          className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-3 py-1.5 text-xs font-medium text-accent-strong hover:bg-surface-muted"
-        >
-          <Plus size={14} aria-hidden /> Add mapping
-        </button>
-      </div>
-
-      <Panel className="mt-5 overflow-x-auto">
-        <table className="w-full min-w-[720px] border-collapse">
-          <thead>
-            <tr className="border-b border-border-strong bg-surface-muted">
-              <Th>Source Field</Th>
-              <Th className="text-center">Transform</Th>
-              <Th>Target Field</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map((r) => (
-              <tr key={r.source} className="border-b border-border last:border-0">
-                <td className="px-5 py-3">
-                  <Code>{r.source}</Code>{" "}
-                  <span className="text-xs text-muted-foreground-2">({r.sourceLabel})</span>
-                </td>
-                <td className="px-5 py-3">
-                  <div className="flex items-center justify-center gap-1.5">
-                    <label className="sr-only" htmlFor={`tf-${r.source}`}>
-                      Transform for {r.source}
-                    </label>
-                    <select
-                      id={`tf-${r.source}`}
-                      value={r.transform}
-                      onChange={(e) => setTransform(r.source, e.target.value)}
-                      className="w-[110px] rounded-lg border border-border-strong bg-surface px-2 py-1 text-center text-xs"
-                    >
-                      {TRANSFORM_OPTIONS.map((o) => (
-                        <option key={o}>{o}</option>
-                      ))}
-                    </select>
-                    <span
-                      title={TRANSFORM_HINT[r.transform]}
-                      aria-label={TRANSFORM_HINT[r.transform]}
-                      role="note"
-                      tabIndex={0}
-                      className="flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-muted text-[10px] font-bold text-muted-foreground-2"
-                    >
-                      ?
-                    </span>
-                  </div>
-                </td>
-                <td className="px-5 py-3">
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-xs text-muted-foreground-2" aria-hidden>
-                      →
-                    </span>
-                    {r.target ? (
-                      <Code className="text-accent-strong">{r.target}</Code>
-                    ) : (
-                      <span className="text-xs italic text-muted-foreground-2">no target</span>
-                    )}
-                    <span className={`ml-auto rounded px-2 py-0.5 text-[10px] font-medium ${STATUS[r.status].pill}`}>
-                      {STATUS[r.status].label}
-                    </span>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {visible.length === 0 && (
-              <tr>
-                <td colSpan={3} className="px-5 py-10 text-center text-xs text-muted-foreground">
-                  No {filter && STATUS[filter].label.toLowerCase()} fields.
-                </td>
-              </tr>
+          <div className="flex shrink-0 items-center gap-2">
+            {mapping && (
+              <button
+                onClick={() => {
+                  setMapping(null);
+                  setResult(null);
+                  if (inputRef.current) inputRef.current.value = "";
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-surface-muted"
+              >
+                <X size={13} aria-hidden /> Remove
+              </button>
             )}
-          </tbody>
-        </table>
-      </Panel>
+            <button
+              onClick={() => inputRef.current?.click()}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-1.5 text-xs font-medium text-accent-foreground hover:bg-accent-hover disabled:opacity-60"
+            >
+              <UploadCloud size={13} aria-hidden /> {busy ? "Mapping…" : mapping ? "Replace" : "Choose workbook"}
+            </button>
+          </div>
+        </Panel>
+      )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 pt-6">
-        <p className="text-xs text-muted-foreground-2">
-          {counts.mapped} of {rows.length} fields mapped
-          {counts.unmapped > 0 && ` · ${counts.unmapped} still unmapped`}
-        </p>
-        <ContinueButton label="Continue to Validate" onClick={onContinue} />
+
+      {s && (
+        <>
+          <div className="animate-rise mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {(
+              [
+                [s.source_rows.toLocaleString(), "Source rows"],
+                [String(s.source_columns), "Source columns"],
+                [String(s.target_columns), "Target columns"],
+                [`${s.rules_applied}/${s.rules_total}`, "Rules applied"],
+                [String(s.crosswalks_loaded), "Crosswalks"],
+              ] as [string, string][]
+            ).map(([value, label]) => (
+              <Panel key={label} className="p-4">
+                <p className="text-2xl font-semibold leading-8">{value}</p>
+                <p className="pt-1 text-xs text-muted-foreground-2">{label}</p>
+              </Panel>
+            ))}
+          </div>
+
+          <Panel className="mt-6 overflow-x-auto">
+            <div className="flex items-center justify-between border-b border-border-strong px-5 py-3">
+              <h2 className="text-sm font-semibold">Mapped output</h2>
+              {/* The engine caps the preview; saying so stops the row count
+                  reading as the whole dataset. */}
+              <span className="text-xs text-muted-foreground-2">
+                Showing {result.preview.length} of {result.total_rows.toLocaleString()} rows
+              </span>
+            </div>
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="border-b border-border-strong">
+                  {result.columns.map((c) => (
+                    <Th key={c} className="whitespace-nowrap">
+                      {c}
+                    </Th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {result.preview.slice(0, 25).map((row, i) => (
+                  <tr key={i} className="border-b border-border last:border-0">
+                    {result.columns.map((c) => (
+                      <td key={c} className="whitespace-nowrap px-5 py-2.5 text-xs">
+                        {row[c] === null || row[c] === "" ? (
+                          <span className="italic text-muted-foreground-2">empty</span>
+                        ) : (
+                          <Code>{String(row[c])}</Code>
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Panel>
+        </>
+      )}
+
+      <div className="flex justify-end pt-6">
+        <ContinueButton
+          label="Continue to Validate"
+          disabled={!result}
+          disabledReason="Upload a mapping workbook first"
+          onClick={onContinue}
+        />
       </div>
     </div>
   );

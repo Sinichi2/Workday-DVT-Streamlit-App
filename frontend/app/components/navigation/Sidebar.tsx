@@ -2,14 +2,22 @@
 
 import { useState, type ComponentType } from "react";
 import {
+  Bell,
   Check,
   CheckCircle2,
   ChevronDown,
+  LifeBuoy,
+  LogOut,
   Menu,
   PanelLeft,
   Settings,
+  ShieldCheck,
+  User,
+  Users,
   X,
 } from "lucide-react";
+import { useSession } from "@/app/lib/session";
+import { fullName, initials } from "@/app/lib/supabase";
 import {
   CompareIcon,
   DashboardIcon,
@@ -38,6 +46,8 @@ const WORKSPACE = "Workday HCM Q3";
 type Props = {
   collapsed: boolean;
   onToggle: () => void;
+  /** Swaps the whole nav for the platform-admin one. Same shell, same login. */
+  admin?: boolean;
   active?: string;
   onNavigate?: (label: string) => void;
   /** Workflow steps finished so far — drives the check badges, the n/4 counter
@@ -53,7 +63,7 @@ type Props = {
  *  the breakpoint is expressed in CSS, so there's no viewport measuring in JS
  *  and no second copy of the nav in the DOM. */
 function shellClass(open: boolean) {
-  return `fixed inset-y-0 left-0 z-40 flex shrink-0 flex-col border-r border-border bg-surface-muted transition-transform duration-200 lg:static lg:translate-x-0 ${
+  return `fixed inset-y-0 left-0 z-40 flex shrink-0 flex-col overflow-y-auto border-r border-border bg-surface-muted transition-transform duration-200 lg:static lg:translate-x-0 ${
     // `invisible` (not just translated off-screen) so a closed drawer is out of
     // the tab order — otherwise keyboard focus walks into nav you cannot see.
     open ? "translate-x-0" : "invisible -translate-x-full lg:visible"
@@ -72,7 +82,16 @@ function BrandMark({ size = 28 }: { size?: number }) {
   );
 }
 
-export function Sidebar({ collapsed, onToggle, active = "Dashboard", onNavigate, completed = [], open = false, onClose }: Props) {
+const ADMIN_NAV: { label: string; icon: IconType }[] = [
+  { label: "Admin", icon: ShieldCheck },
+  { label: "Users", icon: Users },
+  { label: "All Reports", icon: ReportsIcon },
+  { label: "Support", icon: LifeBuoy },
+];
+
+export function Sidebar({ collapsed, onToggle, admin = false, active = "Dashboard", onNavigate, completed = [], open = false, onClose }: Props) {
+  const { workspace } = useSession();
+  const workspaceName = workspace?.name ?? WORKSPACE;
   const [workflowOpen, setWorkflowOpen] = useState(true);
   const doneCount = WORKFLOW_STEPS.filter((s) => completed.includes(s.label)).length;
   const progress = `${doneCount}/${WORKFLOW_STEPS.length}`;
@@ -101,13 +120,21 @@ export function Sidebar({ collapsed, onToggle, active = "Dashboard", onNavigate,
           </span>
           {/* Scrolls inside the rail so the footer never leaves the viewport. */}
           <div className="flex min-h-0 flex-1 flex-col items-center gap-0.5 overflow-y-auto">
-            <RailButton icon={DashboardIcon} label="Dashboard" active={active === "Dashboard"} onClick={() => onNavigate?.("Dashboard")} />
-            <RailButton icon={WorkflowIcon} label="Workflow" active={inWorkflow} onClick={onToggle} />
-            <RailButton icon={ReportsIcon} label="Reports" active={active === "Reports"} onClick={() => onNavigate?.("Reports")} />
+            {admin ? (
+              ADMIN_NAV.map(({ label, icon }) => (
+                <RailButton key={label} icon={icon} label={label} active={active === label} onClick={() => onNavigate?.(label)} />
+              ))
+            ) : (
+              <>
+                <RailButton icon={DashboardIcon} label="Dashboard" active={active === "Dashboard"} onClick={() => onNavigate?.("Dashboard")} />
+                <RailButton icon={WorkflowIcon} label="Workflow" active={inWorkflow} onClick={onToggle} />
+                <RailButton icon={ReportsIcon} label="Reports" active={active === "Reports"} onClick={() => onNavigate?.("Reports")} />
+              </>
+            )}
           </div>
           <div className="flex flex-col items-center gap-0.5 pb-3">
             <RailButton icon={Settings} label="Settings" active={active === "Settings"} onClick={() => onNavigate?.("Settings")} />
-            <RailButton icon={HelpIcon} label="Help Center" />
+            <RailButton icon={HelpIcon} label="Help Center" active={active === "Help Center"} onClick={() => onNavigate?.("Help Center")} />
           </div>
         </aside>
       </>
@@ -140,18 +167,26 @@ export function Sidebar({ collapsed, onToggle, active = "Dashboard", onNavigate,
         </button>
       </div>
 
-      {/* Workspace switcher */}
-      <button className="mt-4 flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm hover:bg-surface-muted">
-        <span className="size-2 rounded-full bg-success" aria-hidden />
-        <span className="flex-1 text-left font-medium">{WORKSPACE}</span>
-        <ChevronDown size={15} className="text-muted-foreground" aria-hidden />
-      </button>
+      {/* Workspace switcher — an admin isn't acting inside one workspace. */}
+      {!admin && (
+        <button className="mt-4 flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm hover:bg-surface-muted">
+          <span className="size-2 rounded-full bg-success" aria-hidden />
+          <span className="flex-1 truncate text-left font-medium">{workspaceName}</span>
+          <ChevronDown size={15} className="shrink-0 text-muted-foreground" aria-hidden />
+        </button>
+      )}
 
       {/* Nav */}
       {/* The nav takes the leftover height and scrolls within itself, so the
           footer below stays pinned to the bottom of the VIEWPORT — on a short
           screen you never scroll the page to reach Settings. */}
-      <nav className="mt-4 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
+      <nav className="mt-4 flex flex-col gap-0.5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+        {admin ? (
+          ADMIN_NAV.map(({ label, icon }) => (
+            <NavItem key={label} icon={icon} label={label} active={active === label} onClick={() => onNavigate?.(label)} />
+          ))
+        ) : (
+          <>
         <NavItem icon={DashboardIcon} label="Dashboard" active={active === "Dashboard"} onClick={() => onNavigate?.("Dashboard")} />
 
         <button
@@ -203,15 +238,44 @@ export function Sidebar({ collapsed, onToggle, active = "Dashboard", onNavigate,
         )}
 
         <NavItem icon={ReportsIcon} label="Reports" active={active === "Reports"} onClick={() => onNavigate?.("Reports")} />
+          </>
+        )}
       </nav>
 
       {/* Footer */}
-      <div className="flex flex-col gap-0.5 pt-2">
+      <div className="flex flex-col gap-0.5 pb-2 pt-2">
         <NavItem icon={Settings} label="Settings" active={active === "Settings"} onClick={() => onNavigate?.("Settings")} />
-        <NavItem icon={HelpIcon} label="Help Center" />
+        <NavItem icon={HelpIcon} label="Help Center" active={active === "Help Center"} onClick={() => onNavigate?.("Help Center")} />
+        <AccountBlock onNavigate={onNavigate} />
       </div>
       </aside>
     </>
+  );
+}
+
+/** The account controls the topbar shows on desktop. Below `lg` the avatar is
+ *  hidden up there and lives here instead, so the hamburger is the single entry
+ *  point to everything navigational on a phone. */
+function AccountBlock({ onNavigate }: { onNavigate?: (label: string) => void }) {
+  const { profile, signOut } = useSession();
+  if (!profile) return null;
+  return (
+    <div className="mt-2 border-t border-border pt-3 lg:hidden">
+      <div className="flex items-center gap-2.5 px-2.5 pb-2">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">
+          {initials(profile)}
+        </span>
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-semibold">{fullName(profile)}</span>
+          <span className="block truncate text-xs text-muted-foreground">
+            {profile.role === "admin" ? "Platform admin" : profile.job_title || profile.email}
+          </span>
+        </span>
+      </div>
+      <NavItem icon={User} label="My Profile" onClick={() => onNavigate?.("Settings")} />
+      <NavItem icon={Bell} label="Notifications" onClick={() => onNavigate?.("Settings")} />
+      <NavItem icon={LogOut} label="Sign out" onClick={() => void signOut().then(() => { window.location.href = "/"; })} />
+    </div>
   );
 }
 
@@ -219,7 +283,13 @@ export function Sidebar({ collapsed, onToggle, active = "Dashboard", onNavigate,
  *  page — at `lg` and up there is nothing to dismiss. */
 function Backdrop({ open, onClose }: { open: boolean; onClose?: () => void }) {
   if (!open) return null;
-  return <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={onClose} aria-hidden />;
+  return (
+    <div
+      className="fixed inset-0 z-30 bg-black/40 motion-safe:animate-[backdrop-in_180ms_ease-out] lg:hidden"
+      onClick={onClose}
+      aria-hidden
+    />
+  );
 }
 
 function NavItem({ icon: Icon, label, active, onClick }: { icon: IconType; label: string; active?: boolean; onClick?: () => void }) {
@@ -227,7 +297,7 @@ function NavItem({ icon: Icon, label, active, onClick }: { icon: IconType; label
     <button
       onClick={onClick}
       aria-current={active ? "page" : undefined}
-      className={`relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium ${
+      className={`relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-colors ${
         active ? "bg-accent-subtle text-accent-strong" : "text-foreground hover:bg-surface"
       }`}
     >
@@ -245,7 +315,7 @@ function RailButton({ icon: Icon, label, active, onClick }: { icon: IconType; la
       aria-label={label}
       aria-current={active ? "page" : undefined}
       title={label}
-      className={`flex size-9 items-center justify-center rounded-lg ${
+      className={`flex size-9 items-center justify-center rounded-lg transition-colors ${
         active ? "bg-accent-subtle text-accent-strong" : "text-muted-foreground hover:bg-surface"
       }`}
     >

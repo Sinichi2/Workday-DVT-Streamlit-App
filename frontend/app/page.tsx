@@ -1,5 +1,5 @@
-import Main from "@/app/main";
+import GeneralHome from "@/app/pages/general/general.home";
 
-export default function Home() {
-  return <Main />;
+export default function Page() {
+  return <GeneralHome />;
 }

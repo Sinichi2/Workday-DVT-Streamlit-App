@@ -1,7 +1,7 @@
 /** Shared surface, table and text atoms. Used by the dashboard, the workflow
  *  steps and Reports — they render the same cards, column headers and deltas. */
 import { TrendingDown, TrendingUp } from "lucide-react";
-import type { Delta as DeltaT } from "@/app/data/subscriber/subscriber.dashboard_data";
+import type { Delta as DeltaT, Severity } from "@/app/data/subscriber/subscriber.dashboard_data";
 
 /** The bordered panel every table, stat card and empty state sits in. */
 export function Panel({ className = "", ...props }: React.HTMLAttributes<HTMLDivElement>) {
@@ -35,6 +35,27 @@ export function Delta({ delta, className = "" }: { delta: DeltaT; className?: st
     <span className={`inline-flex items-center gap-1 text-xs font-medium ${color} ${className}`}>
       <Icon size={13} aria-hidden />
       {delta.text}
+    </span>
+  );
+}
+
+/** Severity pill - the same chip the Validate table, the dashboard breakdown and
+ *  the manual-fix table all render. `-subtle` background + `-text` foreground is
+ *  the AA-safe pairing; never a bare `bg-<sev>` fill behind text.
+ *
+ *  Spelled out rather than composed as `bg-${sev}-subtle` - Tailwind scans source
+ *  text, so a class it never sees written out is a class it never generates. */
+const SEVERITY: Record<Severity, { label: string; chip: string }> = {
+  critical: { label: "Critical", chip: "bg-critical-subtle text-critical-text" },
+  high: { label: "High", chip: "bg-high-subtle text-high-text" },
+  medium: { label: "Medium", chip: "bg-medium-subtle text-medium-text" },
+  low: { label: "Low", chip: "bg-low-subtle text-low-text" },
+};
+
+export function SeverityChip({ severity, className = "" }: { severity: Severity; className?: string }) {
+  return (
+    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold leading-[14.286px] ${SEVERITY[severity].chip} ${className}`}>
+      {SEVERITY[severity].label}
     </span>
   );
 }

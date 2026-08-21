@@ -112,7 +112,7 @@ export type Billing = {
 };
 
 export const DUMMY_BILLING: Billing = {
-  plan: "Pro plan",
+  plan: "Pro Plan",
   nextBillingDate: "Sep 1, 2026",
   card: { brand: "VISA", last4: "4242", expires: "08/2028" },
   invoices: [

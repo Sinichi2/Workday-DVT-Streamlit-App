@@ -11,6 +11,9 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
+    // node --test runs the .test.ts files directly and needs the extension in
+    // the import specifier; safe here because noEmit is on.
+    "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
     "incremental": true,
     "plugins": [

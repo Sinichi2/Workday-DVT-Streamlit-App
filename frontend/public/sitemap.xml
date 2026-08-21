@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Public marketing pages only. /app is deliberately absent: it is behind auth,
+  so listing it would advertise a route that returns a sign-in wall.
+  DEPLOY: replace valigo.com with the real origin.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://valigo.netlify.app/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://valigo.netlify.app/product</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://valigo.netlify.app/pricing</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://valigo.netlify.app/about</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://valigo.netlify.app/contact</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+  </url>
+</urlset>

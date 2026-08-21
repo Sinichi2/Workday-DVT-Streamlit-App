@@ -36,32 +36,36 @@
 }
 
 .dark {
-  --background: #0c0f14;
-  --surface: #151a22;
-  --surface-muted: #1b212b;
-  --border: #232a35;
-  --border-strong: #2f3743;
-  --foreground: #e6e8ec;
-  --muted-foreground: #8b93a1;
-  --muted-foreground-2: #808895;
+  /* Lighter than the original near-black canvas: the old #0c0f14 read as too
+     dark. This is a soft charcoal. Every text/background pair below was checked
+     against WCAG AA (>=4.5:1) before landing - see the note under Theming in
+     prompt_templates/design.md. */
+  --background: #232730;
+  --surface: #2c313b;
+  --surface-muted: #343a45;
+  --border: #3e4550;
+  --border-strong: #505866;
+  --foreground: #eef0f4;
+  --muted-foreground: #b3bbc8;
+  --muted-foreground-2: #a3abb8;
 
-  --accent: #4f5ed9;            /* darkened so white foreground clears AA */
-  --accent-hover: #7482f4;
+  --accent: #5a6ad8;            /* white foreground clears AA at 4.68:1 */
+  --accent-hover: #7182f0;
   --accent-foreground: #ffffff;
-  --accent-subtle: #232a45;
-  --accent-strong: #9fb0ff;     /* light indigo - AA on dark surface + subtle */
+  --accent-subtle: #333a55;
+  --accent-strong: #aebcff;     /* accent as TEXT - AA on all three surfaces */
 
-  --success: #4ade80;
-  --success-text: #4ade80;
-  --success-subtle: #14301f;
-  --danger: #f06a6a;
+  --success: #5fd68c;           /* large display numbers only */
+  --success-text: #77e2a0;
+  --success-subtle: #22402f;
+  --danger: #ff8a8a;
 
-  --info-subtle: #123330;  --info-border: #1f4a45;  --info-text: #7ee0d4;
+  --info-subtle: #1e4340;  --info-border: #2c5b55;  --info-text: #8feadf;
 
-  --critical: #e0484d;   --critical-text: #f2686b;   --critical-subtle: #351720;
-  --high: #e08a3c;       --high-text: #e08a3c;       --high-subtle: #35240f;
-  --medium: #e0c04c;     --medium-text: #e0c04c;     --medium-subtle: #322a0f;
-  --low: #9aa2ae;        --low-text: #9aa2ae;        --low-subtle: #242a33;
+  --critical: #e85a5f;   --critical-text: #ff9296;   --critical-subtle: #452830;
+  --high: #e89a4e;       --high-text: #ffbe7d;       --high-subtle: #45341e;
+  --medium: #e5ca5e;     --medium-text: #f5dc85;     --medium-subtle: #413a1e;
+  --low: #aab2be;        --low-text: #c3cad6;        --low-subtle: #343a45;
 }
 
 /* Expose tokens as Tailwind utilities: bg-surface, text-critical-text, ... */
@@ -118,4 +122,62 @@ body {
   outline: 2px solid var(--accent-strong);
   outline-offset: 2px;
   border-radius: 6px;
+}
+
+/* Motion.
+   Kept here, not per-component: `dialog` and `::backdrop` are element
+   selectors, so every modal in the app animates from one place. @starting-style
+   is the native way to animate something entering the top layer — no library,
+   no mount/unmount state, no JS. */
+@media (prefers-reduced-motion: no-preference) {
+  dialog[open] {
+    animation: dialog-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  dialog[open]::backdrop {
+    animation: backdrop-in 180ms ease-out;
+  }
+  /* Full-bleed sheet on a phone: rises from the bottom edge instead of scaling,
+     which reads as a sheet rather than a shrunken desktop dialog. */
+  @media (width < 40rem) {
+    dialog[open] {
+      animation: sheet-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+  }
+}
+
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+}
+@keyframes sheet-in {
+  from { transform: translateY(2rem); opacity: 0; }
+}
+@keyframes backdrop-in {
+  from { opacity: 0; }
+}
+
+/* Content arriving after a fetch shouldn't snap in. One utility, applied at the
+   few places where a whole panel replaces a skeleton. */
+@media (prefers-reduced-motion: no-preference) {
+  .animate-rise {
+    animation: rise 240ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+}
+
+/* Interactive elements settle instead of snapping. Scoped to the properties
+   that actually change, never `all`. */
+:where(button, a, summary, input, select, textarea) {
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    opacity 140ms ease;
+}
+
+/* Marketing display face. Scoped to a utility so it can never leak into the
+   product UI, which stays entirely on the grotesk. */
+.font-display {
+  font-family: var(--font-display), Georgia, "Times New Roman", serif;
 }
