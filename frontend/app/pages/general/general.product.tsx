@@ -1,101 +1,213 @@
 "use client";
 
-import { Card, CTA, Marker, MarketingShell, Reveal } from "@/app/components/marketing/MarketingChrome";
+import { CTA, MarketingShell, Reveal } from "@/app/components/marketing/MarketingChrome";
 
-const PILLARS = [
+/* Laid out as a technical document, not a feature grid: a contents list, then
+   sections with hanging labels in the margin, specs as definition lists, and
+   one real specimen of the output. Alternating text/checklist-card rows are the
+   stock SaaS feature section and read as generic. */
+
+type Section = {
+  id: string;
+  n: string;
+  label: string;
+  title: string;
+  lede: string;
+  specs: [string, string][];
+};
+
+const SECTIONS: Section[] = [
   {
-    tag: "01 — Checks",
+    id: "checks",
+    n: "01",
+    label: "Checks",
     title: "Every rule, on every row",
-    body: "Missing values, wrong formats, broken links between files, duplicates, dates that don't line up. The things a person catches on row 40 and misses on row 4,000.",
-    points: ["28 checks built in for Workday", "Or bring your own rule sheet", "Blocking problems kept separate from warnings"],
+    lede: "Missing values, wrong formats, broken links between files, duplicates, dates that don't line up. The things a person catches on row 40 and misses on row 4,000.",
+    specs: [
+      ["Built in", "28 checks for Workday, covering the fields a load actually rejects on."],
+      ["Your own", "Upload a rule sheet and Valigo uses it instead."],
+      ["Severity", "Blocking problems stay separate from warnings, because only one of them stops a go-live."],
+      ["Speed", "About thirty seconds for a few thousand rows."],
+    ],
   },
   {
-    tag: "02 — Explanations",
+    id: "explanations",
+    n: "02",
+    label: "Explanations",
     title: "Why it broke, not just that it broke",
-    body: "Every problem is written in plain language, with what caused it and what happens if the data ships as it is.",
-    points: ["A reason for each problem", "Ranked by what actually blocks go-live", "Repeat problems grouped together"],
+    lede: "A list of error codes moves the work rather than doing it. Every problem is written out in full, with what caused it and what happens if the data ships as it is.",
+    specs: [
+      ["Cause", "What in the data produced the problem, named in the row it came from."],
+      ["Priority", "Ranked by what blocks the load, not by how many there are."],
+      ["Grouping", "The same problem across a thousand rows is one item, not a thousand."],
+    ],
   },
   {
-    tag: "03 — Matching",
+    id: "matching",
+    n: "03",
+    label: "Matching",
     title: "Employee Number is Worker ID is Person Number",
-    body: "Your column names rarely match the ones the target system expects. Valigo works out which is which, so you only have to confirm it.",
-    points: ["Columns matched automatically", "Codes translated to the target's values", "Anything unclear is flagged, never guessed"],
+    lede: "Your column names rarely match the ones the target system expects. Valigo works out which is which, so the job shrinks to confirming it.",
+    specs: [
+      ["Columns", "Matched automatically, with how confident the match is."],
+      ["Codes", "Translated to the values the target system expects."],
+      ["Unclear", "Flagged for you. Never guessed, never filled in silently."],
+    ],
   },
   {
-    tag: "04 — Overview",
+    id: "overview",
+    n: "04",
+    label: "Overview",
     title: "Know the file before you trust it",
-    body: "Every upload gets summarised the moment it lands: how many rows, what is blank, what is duplicated, and anything that looks out of place.",
-    points: ["Blanks and duplicates counted", "What kind of data each column holds", "Odd patterns surfaced for you"],
+    lede: "Every upload is summarised the moment it lands, so you find out what you are working with before you spend a day on it.",
+    specs: [
+      ["Shape", "Rows, columns, and what kind of data each column holds."],
+      ["Gaps", "Blanks and duplicates counted per column."],
+      ["Anomalies", "Anything that looks out of place, surfaced without being asked."],
+    ],
   },
 ];
+
+/** A real finding, in the product's own voice. Concrete beats an abstract
+ *  feature bullet, and it is the same shape the app renders. */
+const SPECIMEN = [
+  ["14", "Manager_ID", "Critical", "(empty)", "Manager is required", "10001"],
+  ["27", "Pay_Group", "High", "BW-US", "Not in the reference table", "Bi-Weekly US"],
+  ["6", "Postal_Code", "Medium", "94105 ", "Trailing space", "94105"],
+  ["11", "Work_Email", "Low", "J.SMITH@co.com", "Should be lowercase", "j.smith@co.com"],
+];
+
+const TONE: Record<string, string> = {
+  Critical: "text-[#8A3A32]",
+  High: "text-[#9A5B22]",
+  Medium: "text-[#7A6420]",
+  Low: "text-[#6B6157]",
+};
 
 export default function GeneralProduct() {
   return (
     <MarketingShell>
-      <section className="mx-auto max-w-[1180px] px-6 pb-24 pt-40 md:pt-52">
+      {/* --------------------------------------------------------- masthead */}
+      <section className="mx-auto max-w-[1180px] px-6 pt-24 md:pt-28">
         <Reveal>
-          <Marker n="01">Product</Marker>
-          <h1 className="font-display max-w-[16ch] pt-6 text-[clamp(2.4rem,6vw,4.4rem)] leading-[1] tracking-[-0.02em]">
-            Everything between your export and go-live.
-          </h1>
-        </Reveal>
-        <Reveal delay={120}>
-          <p className="max-w-[58ch] pt-8 text-[17px] leading-relaxed text-[#5A5147]">
-            Every screen answers the same three questions: what happened, what matters, and what to do next.
-          </p>
-        </Reveal>
-        <Reveal delay={200}>
-          <div className="flex flex-wrap gap-3 pt-10">
-            <CTA href="/contact">Request demo</CTA>
-            <CTA href="/pricing" variant="quiet">See pricing</CTA>
+          <div className="border-t border-[#1B1815] pt-6">
+            <div className="flex items-baseline justify-between gap-6">
+              <span className="font-mono text-[11px] tracking-[0.16em] text-[#A89B8A]">PRODUCT</span>
+              <span className="font-mono text-[11px] tracking-[0.16em] text-[#A89B8A]">FOUR PARTS</span>
+            </div>
+            <h1 className="font-display max-w-[17ch] pt-8 text-[clamp(2.6rem,5.6vw,4.6rem)] leading-[0.98] tracking-[-0.02em]">
+              Everything between your export and go&#8209;live.
+            </h1>
+            <p className="max-w-[52ch] pt-8 text-[17px] leading-[1.7] text-[#5A5147]">
+              Every screen answers the same three questions: what happened, what matters, and what to do next.
+            </p>
           </div>
         </Reveal>
+
+        {/* Contents. A manual opens with one; a landing page rarely does, which
+            is exactly why it reads as a document instead of a pitch. */}
+        <Reveal delay={120}>
+          <nav aria-label="Contents" className="pt-16">
+            {SECTIONS.map((s) => (
+              <a
+                key={s.id}
+                href={`#${s.id}`}
+                className="group flex items-baseline gap-6 border-t border-[#E3DCD1] py-4 transition-colors duration-300 hover:bg-[#F4EFE7]"
+              >
+                <span className="font-mono text-[11px] tracking-[0.16em] text-[#A89B8A]">{s.n}</span>
+                <span className="font-display text-[20px] leading-none">{s.label}</span>
+                <span className="hidden flex-1 truncate text-[14px] text-[#8C8177] sm:block">{s.title}</span>
+                <span className="text-[#A89B8A] transition-transform duration-500 group-hover:translate-x-1">&rarr;</span>
+              </a>
+            ))}
+            <div className="border-t border-[#E3DCD1]" />
+          </nav>
+        </Reveal>
       </section>
 
-      {/* Alternating editorial split — the side flips each pillar so the eye
-          never settles into a column. */}
-      <section className="mx-auto max-w-[1180px] px-6">
-        {PILLARS.map((p, i) => (
-          <Reveal key={p.tag} className="py-16">
-            <div className={`grid items-center gap-12 md:grid-cols-2 ${i % 2 ? "md:[&>*:first-child]:order-2" : ""}`}>
-              <div>
-                <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-[#A89B8A]">{p.tag}</span>
-                <h2 className="font-display max-w-[18ch] pt-6 text-[clamp(1.7rem,3.6vw,2.6rem)] leading-[1.08] tracking-[-0.02em]">
-                  {p.title}
-                </h2>
-                <p className="max-w-[52ch] pt-6 text-[15px] leading-relaxed text-[#6B6157]">{p.body}</p>
+      {/* --------------------------------------------------------- sections */}
+      {SECTIONS.map((s) => (
+        <section key={s.id} id={s.id} className="mx-auto max-w-[1180px] scroll-mt-24 px-6 py-20">
+          <Reveal>
+            {/* Hanging label in the margin, body in the wide column. */}
+            <div className="grid gap-8 md:grid-cols-[140px_1fr]">
+              <div className="md:sticky md:top-24 md:self-start">
+                <p className="font-mono text-[11px] tracking-[0.16em] text-[#A89B8A]">{s.n}</p>
+                <p className="pt-1.5 text-[12px] uppercase tracking-[0.18em] text-[#6B6157]">{s.label}</p>
               </div>
-              <Card>
-                <div className="flex flex-col gap-4 p-8">
-                  {p.points.map((pt) => (
-                    <div key={pt} className="flex items-start gap-3 border-b border-[#E3DCD1] pb-4 last:border-0 last:pb-0">
-                      <span className="mt-[3px] flex size-4 shrink-0 items-center justify-center rounded-full border border-[#2F4BA8]/35 text-[#2F4BA8]">
-                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" aria-hidden>
-                          <path d="m5 12.5 4.5 4.5L19 7.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      </span>
-                      <span className="text-sm leading-relaxed text-[#5A5147]">{pt}</span>
+
+              <div className="border-t border-[#1B1815] pt-8">
+                <h2 className="font-display max-w-[20ch] text-[clamp(1.9rem,3.6vw,2.8rem)] leading-[1.08] tracking-[-0.02em]">
+                  {s.title}
+                </h2>
+                <p className="max-w-[58ch] pt-6 text-[17px] leading-[1.75] text-[#5A5147]">{s.lede}</p>
+
+                {/* Definition list on rules — the shape a spec sheet uses. */}
+                <dl className="pt-10">
+                  {s.specs.map(([term, def]) => (
+                    <div key={term} className="grid gap-2 border-t border-[#E3DCD1] py-4 sm:grid-cols-[150px_1fr] sm:gap-8">
+                      <dt className="text-[13px] uppercase tracking-[0.14em] text-[#8C8177]">{term}</dt>
+                      <dd className="max-w-[52ch] text-[15px] leading-[1.7] text-[#3A332C]">{def}</dd>
                     </div>
                   ))}
-                </div>
-              </Card>
-            </div>
-          </Reveal>
-        ))}
-      </section>
-
-      <section className="mx-auto max-w-[1180px] px-6 pb-32 pt-16">
-        <Reveal>
-          <Card>
-            <div className="flex flex-col items-center px-8 py-20 text-center">
-              <h2 className="font-display max-w-[20ch] text-[clamp(1.8rem,4.5vw,3rem)] leading-[1.05] tracking-[-0.02em]">
-                Bring a CSV. We&rsquo;ll do the rest.
-              </h2>
-              <div className="pt-9">
-                <CTA href="/contact">Request demo</CTA>
+                  <div className="border-t border-[#E3DCD1]" />
+                </dl>
               </div>
             </div>
-          </Card>
+          </Reveal>
+
+          {/* The specimen sits inside section 02, where the claim is about how
+              findings read — so it can be checked against the claim. */}
+          {s.id === "explanations" && (
+            <Reveal delay={100}>
+              <div className="pt-14 md:pl-[172px]">
+                <p className="pb-4 text-[11px] uppercase tracking-[0.2em] text-[#A89B8A]">
+                  Specimen — four findings, as written
+                </p>
+                <div className="overflow-x-auto border border-[#E3DCD1] bg-white/60">
+                  <table className="w-full min-w-[720px] border-collapse text-left font-mono text-[12px]">
+                    <thead>
+                      <tr className="border-b border-[#E3DCD1] text-[10px] uppercase tracking-[0.14em] text-[#A89B8A]">
+                        <th className="px-4 py-3 font-normal">Row</th>
+                        <th className="py-3 pr-4 font-normal">Field</th>
+                        <th className="py-3 pr-4 font-normal">Severity</th>
+                        <th className="py-3 pr-4 font-normal">Value</th>
+                        <th className="py-3 pr-4 font-normal">Problem</th>
+                        <th className="px-4 py-3 font-normal">Suggested fix</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {SPECIMEN.map(([row, field, sev, value, problem, fix]) => (
+                        <tr key={row} className="border-b border-[#EFE9DF] last:border-0">
+                          <td className="px-4 py-3 text-[#A89B8A]">{row}</td>
+                          <td className="py-3 pr-4 text-[#1B1815]">{field}</td>
+                          <td className={`py-3 pr-4 ${TONE[sev]}`}>{sev}</td>
+                          <td className="py-3 pr-4 text-[#6B6157]">{value.trim() === "" ? "(empty)" : value}</td>
+                          <td className="py-3 pr-4 text-[#3A332C]">{problem}</td>
+                          <td className="px-4 py-3 text-[#2F6B45]">{fix}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </Reveal>
+          )}
+        </section>
+      ))}
+
+      {/* -------------------------------------------------------- colophon */}
+      <section className="mx-auto max-w-[1180px] px-6 pb-28 pt-10">
+        <Reveal>
+          <div className="grid gap-8 border-t border-[#1B1815] pt-10 md:grid-cols-[140px_1fr]">
+            <p className="font-mono text-[11px] tracking-[0.16em] text-[#A89B8A]">END</p>
+            <div className="flex flex-wrap items-end justify-between gap-8">
+              <h2 className="font-display max-w-[16ch] text-[clamp(2rem,4.4vw,3.2rem)] leading-[1.04] tracking-[-0.02em]">
+                Bring a file. We&rsquo;ll show you what&rsquo;s in it.
+              </h2>
+              <CTA href="/contact">Request a demo</CTA>
+            </div>
+          </div>
         </Reveal>
       </section>
     </MarketingShell>
