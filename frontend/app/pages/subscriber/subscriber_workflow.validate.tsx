@@ -16,6 +16,7 @@ import { api, fileForm } from "@/app/lib/api";
 import { toRun, type ValidateResponse } from "@/app/lib/findings";
 import { completeRun, createRun, failRun, saveFixes } from "@/app/lib/runs";
 import { reportError } from "@/app/lib/errors";
+import { scoreBand } from "@/app/data/subscriber/subscriber.reports_data";
 import { useSession } from "@/app/lib/session";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
@@ -28,9 +29,16 @@ const SEV: Record<Severity, { label: string; chip: string; pill: string; num: st
 };
 
 type Phase = "idle" | "running" | "done";
-type Props = { file: File | null; onContinue: () => void; onComplete: () => void };
+type Props = {
+  file: File | null;
+  /** Stage 2's mapping workbook. Without it the dataset never reaches target
+   *  shape and every Workday rule scores zero hits. */
+  mapping: File | null;
+  onContinue: () => void;
+  onComplete: () => void;
+};
 
-export default function SubscriberWorkflowValidate({ file, onContinue, onComplete }: Props) {
+export default function SubscriberWorkflowValidate({ file, mapping, onContinue, onComplete }: Props) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<ValidationRun | null>(null);
@@ -56,7 +64,11 @@ export default function SubscriberWorkflowValidate({ file, onContinue, onComplet
         if (ctrl.signal.aborted) return;
         setRunId(run.id);
 
-        const res = await api.upload<ValidateResponse>("/validate", fileForm({ dataset: file }), ctrl.signal);
+        const res = await api.upload<ValidateResponse>(
+          "/validate",
+          fileForm(mapping ? { dataset: file, mapping } : { dataset: file }),
+          ctrl.signal,
+        );
         const parsed = toRun(res);
         await completeRun(run.id, parsed, res.rules_used ?? "bundled_workday_hcm");
         if (ctrl.signal.aborted) return;
@@ -75,7 +87,7 @@ export default function SubscriberWorkflowValidate({ file, onContinue, onComplet
     })();
 
     return () => ctrl.abort();
-  }, [phase, file, profile, workspace, onComplete]);
+  }, [phase, file, mapping, profile, workspace, onComplete]);
 
   // Manual remediation takes over the step: one decision per screen, and the
   // table needs the full width the results view was using.
@@ -212,7 +224,10 @@ function Results({
       <div className="animate-rise mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <Panel className="p-4">
           <p className="text-xs text-muted-foreground-2">Quality Score</p>
-          <p className="pt-2 text-4xl font-semibold leading-10 text-success">{run.qualityScore}</p>
+          {/* Banded, not always green — 76% is not a passing grade. */}
+          <p className={`pt-2 text-4xl font-semibold leading-10 ${scoreBand(parseFloat(run.qualityScore)).text}`}>
+            {run.qualityScore}
+          </p>
           <p className="pt-1 text-xs text-muted-foreground-2">
             {run.passed.toLocaleString()} / {run.records.toLocaleString()} passed
           </p>

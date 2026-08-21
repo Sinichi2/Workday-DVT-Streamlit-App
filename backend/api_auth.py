@@ -13,7 +13,7 @@ something to prove who it is on the next request. That is true of every design.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel, Field
 
 from emails import Email
@@ -69,7 +69,14 @@ async def refresh(refresh_token: str = Body(embed=True)):
 
 @router.post("/signout")
 async def signout(user: User = CurrentUser):
-    await gotrue("logout", {}, token=user.token)
+    try:
+        await gotrue("logout", {}, token=user.token)
+    except HTTPException as e:
+        # GoTrue 401/403s a token it has already revoked — a second sign-out, or
+        # one racing an expiry. The session is gone either way, which is what
+        # the caller asked for, so reporting failure would be a lie.
+        if e.status_code not in (401, 403):
+            raise
     return {"ok": True}
 
 

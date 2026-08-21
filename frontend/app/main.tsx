@@ -52,6 +52,9 @@ export default function Main() {
 
   // Workflow progress lives here because the sidebar and every step read it.
   const [file, setFile] = useState<File | null>(null);
+  // Validate needs this too: the rule set addresses Workday field names, so the
+  // dataset has to be mapped into target shape before the rules mean anything.
+  const [mapping, setMapping] = useState<File | null>(null);
   const [completed, setCompleted] = useState<Step[]>([]);
 
   useEffect(() => {
@@ -91,7 +94,12 @@ export default function Main() {
   // the later steps ticked would claim a run that no longer has an input.
   const chooseFile = useCallback((next: File | null) => {
     setFile(next);
-    if (!next) setCompleted([]);
+    if (!next) {
+      setCompleted([]);
+      // A mapping is source-specific; keeping it would map the next file with
+      // the previous file's rules.
+      setMapping(null);
+    }
   }, []);
 
   // Theme is applied before this branch so the auth screens are themed too.
@@ -141,10 +149,11 @@ export default function Main() {
           {route === "Profile" && (
             <SubscriberWorkflowProfile file={file} onFile={chooseFile} onContinue={() => advance("profile")} />
           )}
-          {route === "Transform" && <SubscriberWorkflowTransform file={file} onContinue={() => advance("transform")} />}
+          {route === "Transform" && <SubscriberWorkflowTransform file={file} onMapping={setMapping} onContinue={() => advance("transform")} />}
           {route === "Validate" && (
             <SubscriberWorkflowValidate
               file={file}
+              mapping={mapping}
               onContinue={() => advance("validate")}
               onComplete={() => complete("validate")}
             />

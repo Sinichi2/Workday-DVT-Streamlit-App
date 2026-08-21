@@ -9,8 +9,12 @@ import { Menu } from "lucide-react";
    list. The stacked heading-plus-cards layout is the generic admin template
    and it makes every row a scroll away from its own context. */
 
-/** Toolbar. Section name, live counts inline, actions right — one line, on a
- *  rule. Deliberately not a 40px title with a subtitle underneath. */
+/** Toolbar. Section name, live counts, actions right.
+ *
+ *  One line on a wide screen. Narrow, it becomes exactly two: identity and
+ *  account on top, counts underneath. The ordering below is what forces that —
+ *  a plain `flex-wrap` row let the counts wrap first and stranded the account
+ *  on a third line of its own. */
 export function Bar({
   section,
   title,
@@ -32,7 +36,7 @@ export function Bar({
 }) {
   return (
     <div className="border-b border-border-strong bg-surface/60">
-      <div className="mx-auto flex max-w-[1240px] flex-wrap items-center gap-x-6 gap-y-3 px-4 py-2.5 sm:px-6">
+      <div className="mx-auto flex max-w-[1240px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 sm:px-6">
         {onOpenNav && (
           <button
             onClick={onOpenNav}
@@ -45,8 +49,11 @@ export function Bar({
         <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground-2">{section}</span>
         <h1 className="text-[15px] font-semibold">{title}</h1>
 
+        {/* `order-last w-full` drops the counts onto their own full-width row
+            below `md`, which keeps the account up on the first line with the
+            title. From `md` the order resets and it all sits inline. */}
         {stats.length > 0 && (
-          <dl className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
+          <dl className="order-last flex w-full flex-wrap items-baseline gap-x-5 gap-y-1 md:order-none md:w-auto">
             {stats.map(([label, value]) => (
               <div key={label} className="flex items-baseline gap-1.5">
                 <dd className="font-mono text-[13px] tabular-nums">{value}</dd>

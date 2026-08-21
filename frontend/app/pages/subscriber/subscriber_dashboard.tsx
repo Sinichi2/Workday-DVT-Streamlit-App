@@ -4,19 +4,14 @@ import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Info, Pencil, RotateCw, Sparkles, Wand2, X } from "lucide-react";
 import { Button } from "@/app/components/button/Button";
 import { Delta, Panel } from "@/app/components/ui/Primitives";
+import { api } from "@/app/lib/api";
+import { reportError } from "@/app/lib/errors";
 import {
-  DUMMY_DATA,
   SEVERITY_WORKDAY,
   type DashboardData,
   type Insight,
   type Severity,
 } from "@/app/data/subscriber/subscriber.dashboard_data";
-
-// TODO(backend): no such endpoint yet. The engine API is stateless - it keeps
-// no runs - so a dashboard needs persistence added server-side first. Until
-// then this 404s and, in dev only, seeded figures render in its place.
-const DASHBOARD_ENDPOINT = `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/subscriber/dashboard`;
-const IS_DEV = process.env.NODE_ENV !== "production";
 
 const SEV: Record<Severity, { bar: string; pill: string; text: string }> = {
   critical: { bar: "bg-critical", pill: "bg-critical-subtle text-critical-text", text: "text-critical-text" },
@@ -30,41 +25,35 @@ const SEVERITIES = ["critical", "high", "medium", "low"] as const;
 type LoadState =
   | { status: "loading" }
   | { status: "ready"; data: DashboardData }
-  | { status: "error"; message: string };
+  | { status: "empty" }
+  | { status: "error" };
 
 export default function SubscriberDashboard() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
 
-  const load = useCallback(async (signal?: AbortSignal) => {
+  const load = useCallback(async () => {
     setState({ status: "loading" });
     try {
-      const res = await fetch(DASHBOARD_ENDPOINT, { signal });
-      if (!res.ok) throw new Error(`Server responded ${res.status}`);
-      const data = (await res.json()) as DashboardData;
-      setState({ status: "ready", data });
-    } catch (err) {
-      if (signal?.aborted) return;
-      // No dashboard endpoint exists yet. Dev shows seeded figures so the
-      // screen is reachable; production still fails honestly.
-      if (IS_DEV) {
-        setState({ status: "ready", data: DUMMY_DATA });
-      } else {
-        setState({ status: "error", message: err instanceof Error ? err.message : "Unknown error" });
-      }
+      // null means the workspace has no completed run yet — an empty account,
+      // not a failure, so it gets its own state rather than the error card.
+      const data = await api.get<DashboardData | null>("/subscriber/dashboard");
+      setState(data ? { status: "ready", data } : { status: "empty" });
+    } catch (err: unknown) {
+      reportError("subscriber/dashboard", err);
+      setState({ status: "error" });
     }
   }, []);
 
   useEffect(() => {
-    const ctrl = new AbortController();
-    load(ctrl.signal);
-    return () => ctrl.abort();
+    void load();
   }, [load]);
 
   return (
     <div className="mx-auto max-w-6xl">
       {/* <h1 className="mb-6 text-3xl font-semibold">Dashboard</h1> */}
       {state.status === "loading" && <SkeletonGrid />}
-      {state.status === "error" && <ErrorCard message={state.message} onRetry={() => load()} />}
+      {state.status === "empty" && <EmptyCard />}
+      {state.status === "error" && <ErrorCard onRetry={() => void load()} />}
       {state.status === "ready" && <DashboardBody data={state.data} />}
     </div>
   );
@@ -116,7 +105,19 @@ function DashboardBody({ data }: { data: DashboardData }) {
             <Label>Data Quality Score</Label>
             <AiButton label="AI insights for this run" onClick={() => setScope({ label: "This run" })} />
           </div>
-          <div className="pt-2 text-[60px] font-semibold leading-[1.05] text-success">{data.qualityScore}</div>
+          {/* Keyed to the number: a hard-coded green congratulates the user on a
+              0% run. Thresholds match the Reports list. */}
+          <div
+            className={`pt-2 text-[60px] font-semibold leading-[1.05] ${
+              parseFloat(data.qualityScore) >= 95
+                ? "text-success"
+                : parseFloat(data.qualityScore) >= 80
+                  ? "text-high-text"
+                  : "text-critical-text"
+            }`}
+          >
+            {data.qualityScore}
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-2 pt-4">
             <span className="text-xs text-muted-foreground-2">{data.recordsEvaluated}</span>
             <Delta delta={data.qualityDelta} />
@@ -212,9 +213,14 @@ function DashboardBody({ data }: { data: DashboardData }) {
             <h2 className="text-base font-semibold text-accent-strong">AI Insights</h2>
           </div>
           <div className="flex flex-col gap-3">
-            {data.insights.map((ins) => (
-              <InsightItem key={ins.title} insight={ins} />
-            ))}
+            {data.insights.length ? (
+              data.insights.map((ins) => <InsightItem key={ins.title} insight={ins} />)
+            ) : (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                No suggestions for this run yet. Insights appear here once the validation agent has reviewed
+                the findings.
+              </p>
+            )}
           </div>
         </Panel>
       </div>
@@ -326,13 +332,29 @@ function InfoDot({ hint }: { hint: string }) {
   );
 }
 
-function ErrorCard({ message, onRetry }: { message: string; onRetry: () => void }) {
+function EmptyCard() {
+  return (
+    <Panel className="flex flex-col items-center gap-3 p-10 text-center">
+      <Info size={28} className="text-muted-foreground-2" aria-hidden />
+      <div>
+        <div className="text-base font-semibold">No validation runs yet</div>
+        <p className="mt-1 max-w-[420px] text-sm text-muted-foreground">
+          Upload a Workday extract and run a validation — the quality score and error breakdown appear here
+          once the first run finishes.
+        </p>
+      </div>
+    </Panel>
+  );
+}
+
+function ErrorCard({ onRetry }: { onRetry: () => void }) {
   return (
     <Panel className="flex flex-col items-center gap-3 p-10 text-center">
       <AlertTriangle size={28} className="text-danger" aria-hidden />
       <div>
         <div className="text-base font-semibold">Couldn’t load the dashboard</div>
-        <p className="mt-1 text-sm text-muted-foreground">{message}. Check your connection and try again.</p>
+        {/* Deliberately generic. The cause goes to the console, never the UI. */}
+        <p className="mt-1 text-sm text-muted-foreground">Check your connection and try again.</p>
       </div>
       <Button variant="primary" onClick={onRetry}>
         <RotateCw size={14} aria-hidden /> Retry

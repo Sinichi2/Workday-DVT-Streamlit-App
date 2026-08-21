@@ -1,6 +1,6 @@
 /** Shared surface, table and text atoms. Used by the dashboard, the workflow
  *  steps and Reports — they render the same cards, column headers and deltas. */
-import { TrendingDown, TrendingUp } from "lucide-react";
+import { Minus, TrendingDown, TrendingUp } from "lucide-react";
 import type { Delta as DeltaT, Severity } from "@/app/data/subscriber/subscriber.dashboard_data";
 
 /** The bordered panel every table, stat card and empty state sits in. */
@@ -21,16 +21,32 @@ export function Th({ className = "", ...props }: React.ThHTMLAttributes<HTMLTabl
 
 /** Monospace identifier — column names, report ids, raw cell values. These are
  *  literal strings from the data, so the mono face stops them reading as prose. */
-export function Code({ className = "", children }: { className?: string; children: React.ReactNode }) {
-  return <span className={`font-mono text-xs ${className}`}>{children}</span>;
+export function Code({
+  className = "",
+  title,
+  children,
+}: {
+  className?: string;
+  /** Hover text — used where the visible value is truncated, e.g. a run id. */
+  title?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <span title={title} className={`font-mono text-xs ${className}`}>
+      {children}
+    </span>
+  );
 }
 
 /** A trend delta. The arrow follows the sign of the change; the color follows
  *  whether the change is good FOR THIS METRIC — "−14 errors" points down and is
  *  green, not red. */
 export function Delta({ delta, className = "" }: { delta: DeltaT; className?: string }) {
-  const Icon = delta.direction === "down" ? TrendingDown : TrendingUp;
-  const color = delta.good ? "text-success-text" : "text-danger";
+  // "flat" is no change (or no run to compare against) — it is neither good nor
+  // bad, and a green up-arrow on an unchanged metric reads as improvement.
+  const Icon = delta.direction === "flat" ? Minus : delta.direction === "down" ? TrendingDown : TrendingUp;
+  const color =
+    delta.direction === "flat" ? "text-muted-foreground-2" : delta.good ? "text-success-text" : "text-danger";
   return (
     <span className={`inline-flex items-center gap-1 text-xs font-medium ${color} ${className}`}>
       <Icon size={13} aria-hidden />
