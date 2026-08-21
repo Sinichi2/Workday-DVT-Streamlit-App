@@ -7,6 +7,7 @@ import {
   AuthShell,
   Field,
   FormError,
+  PasswordInput,
   SubmitButton,
   type AuthView,
 } from "@/app/pages/general/authentication/auth.signIn";
@@ -76,16 +77,14 @@ export default function AuthResetPassword({ onNavigate }: { onNavigate: (v: Auth
         <form onSubmit={setNewPassword} noValidate>
           <Field label="New password">
             {(id) => (
-              <input
+              <PasswordInput
                 id={id}
-                type="password"
                 required
                 minLength={MIN_PASSWORD}
                 autoComplete="new-password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className={AUTH_INPUT}
-                placeholder={`Min ${MIN_PASSWORD} characters`}
+                onChange={setPassword}
+                placeholder={`At least ${MIN_PASSWORD} characters`}
               />
             )}
           </Field>
