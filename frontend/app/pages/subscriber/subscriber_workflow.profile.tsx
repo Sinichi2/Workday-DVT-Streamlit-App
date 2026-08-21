@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { FileText, UploadCloud, X } from "lucide-react";
 import { ContinueButton, WorkflowHeader } from "@/app/components/workflow/WorkflowChrome";
 import { Panel } from "@/app/components/ui/Primitives";
-import { fileForm, post } from "@/app/lib/api";
+import { api, fileForm } from "@/app/lib/api";
 
 type ProfileResponse = {
   overview: {
@@ -47,7 +47,7 @@ export default function SubscriberWorkflowProfile({ file, onFile, onContinue }: 
     }
     const ctrl = new AbortController();
     setProfiling(true);
-    post<ProfileResponse>("/profile", fileForm({ file }), ctrl.signal)
+    api.upload<ProfileResponse>("/profile", fileForm({ file }), ctrl.signal)
       .then((res) => {
         setProfile(res);
         setError(null);

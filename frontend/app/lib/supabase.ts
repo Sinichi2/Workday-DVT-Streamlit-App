@@ -1,13 +1,8 @@
-"use client";
-
-import { createBrowserClient } from "@supabase/ssr";
-
-/** One browser client for the whole app. `createBrowserClient` already memoises
- *  per-tab, so this is a convenience, not a second instance. */
-export const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-);
+/* Shared row types.
+ *
+ * There is no Supabase client in the browser any more — the backend owns that.
+ * This module is types plus two display helpers, kept at the old path so the
+ * imports across the app didn't all have to churn. */
 
 export type AppRole = "subscriber" | "admin";
 export type WorkspaceRole = "owner" | "editor" | "viewer";
@@ -69,12 +64,4 @@ export function initials(p: Pick<Profile, "first_name" | "last_name" | "email">)
   // Falling back to the email keeps the avatar from rendering empty for an
   // account that signed up without a name.
   return (a + b).toUpperCase() || p.email.slice(0, 2).toUpperCase();
-}
-
-/** Bearer token for the engine API. The backend verifies it against Supabase's
- *  JWKS, so the browser never has to be trusted about who it is. */
-export async function authHeader(): Promise<Record<string, string>> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-  return token ? { Authorization: `Bearer ${token}` } : {};
 }

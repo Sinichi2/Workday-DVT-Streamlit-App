@@ -7,7 +7,7 @@ import {
   type SupportPriority,
 } from "@/app/data/subscriber/subscriber.helpCenter_data";
 import { useSession } from "@/app/lib/session";
-import { supabase } from "@/app/lib/supabase";
+import { api } from "@/app/lib/api";
 
 type Props = { open: boolean; onClose: () => void };
 
@@ -216,19 +216,22 @@ export default function TemplateCustomerSupport({ open, onClose }: Props) {
                 if (!profile) return;
                 setBusy(true);
                 setError(null);
-                // The receipt only shows once the row is actually stored —
-                // "Message sent" over a failed insert is the worst outcome here.
-                const { error } = await supabase.from("support_tickets").insert({
-                  user_id: profile.id,
-                  workspace_id: workspace?.id ?? null,
-                  subject,
-                  description,
-                  priority,
-                  context,
-                });
-                setBusy(false);
-                if (error) setError(error.message);
-                else setSent(true);
+                try {
+                  // The receipt only shows once the row is actually stored —
+                  // "Message sent" over a failed insert is the worst outcome.
+                  await api.post("/tickets", {
+                    workspace_id: workspace?.id ?? null,
+                    subject,
+                    description,
+                    priority,
+                    context,
+                  });
+                  setSent(true);
+                } catch (e: unknown) {
+                  setError(e instanceof Error ? e.message : "Could not send the request");
+                } finally {
+                  setBusy(false);
+                }
               }}
               disabled={!subject.trim() || busy}
               title={subject.trim() ? undefined : "Add a subject first"}

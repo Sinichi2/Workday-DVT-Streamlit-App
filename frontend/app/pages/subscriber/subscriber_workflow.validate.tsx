@@ -12,7 +12,7 @@ import { Code, Panel, Th } from "@/app/components/ui/Primitives";
 import type { Finding, ValidationRun } from "@/app/data/subscriber/subscriber.workflow_data";
 import SubscriberFixManually from "@/app/pages/subscriber/subscriber_fixManually";
 import type { Severity } from "@/app/data/subscriber/subscriber.dashboard_data";
-import { fileForm, post } from "@/app/lib/api";
+import { api, fileForm } from "@/app/lib/api";
 import { toRun, type ValidateResponse } from "@/app/lib/findings";
 import { completeRun, createRun, failRun, saveFixes } from "@/app/lib/runs";
 import { useSession } from "@/app/lib/session";
@@ -56,7 +56,7 @@ export default function SubscriberWorkflowValidate({ file, onContinue, onComplet
         if (ctrl.signal.aborted) return;
         setRunId(run.id);
 
-        const res = await post<ValidateResponse>("/validate", fileForm({ dataset: file }), ctrl.signal);
+        const res = await api.upload<ValidateResponse>("/validate", fileForm({ dataset: file }), ctrl.signal);
         const parsed = toRun(res);
         await completeRun(run.id, parsed, res.rules_used ?? "bundled_workday_hcm");
         if (ctrl.signal.aborted) return;
@@ -86,10 +86,11 @@ export default function SubscriberWorkflowValidate({ file, onContinue, onComplet
         onSave={async (edits) => {
           if (!runId || !profile) return;
           try {
+            // No user id: the backend takes it from the verified token, so a
+            // client cannot attribute someone else's fix to them.
             await saveFixes(
               runId,
               edits.map((e) => ({ row: e.finding.row, field: e.finding.field, value: e.value })),
-              profile.id,
             );
             setFixing(false);
           } catch (e: unknown) {

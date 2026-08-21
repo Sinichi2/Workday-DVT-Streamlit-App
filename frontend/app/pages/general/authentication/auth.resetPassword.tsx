@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/app/lib/supabase";
+import { auth } from "@/app/lib/api";
 import {
   AUTH_INPUT,
   AuthShell,
@@ -25,28 +25,27 @@ export default function AuthResetPassword({ onNavigate }: { onNavigate: (v: Auth
   const [sent, setSent] = useState(false);
   const [done, setDone] = useState(false);
 
-  // Following the recovery link signs the user in with a temporary session and
-  // fires PASSWORD_RECOVERY. That is the only reliable cue that we should be
-  // showing the "set a new password" half rather than the request half.
+  // The recovery link lands with tokens in the URL fragment. Adopting them is
+  // what lets this screen call /auth/password as that user, and it is the cue
+  // to show the "set a new password" half rather than the request half.
   useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") setMode("update");
-    });
-    return () => sub.subscription.unsubscribe();
+    if (auth.adoptFromUrlFragment()) setMode("update");
   }, []);
 
   async function sendLink(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: typeof window !== "undefined" ? window.location.origin : undefined,
-    });
-    setBusy(false);
-    // Not branching on "user not found": confirming which addresses have
-    // accounts turns this form into an account-enumeration oracle.
-    if (error) setError(error.message);
-    else setSent(true);
+    try {
+      await auth.requestReset(email, typeof window !== "undefined" ? window.location.origin : undefined);
+      // Never branch on "user not found" — confirming which addresses have
+      // accounts turns this form into an account-enumeration oracle.
+      setSent(true);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Could not send the link");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function setNewPassword(e: React.FormEvent) {
@@ -57,10 +56,14 @@ export default function AuthResetPassword({ onNavigate }: { onNavigate: (v: Auth
     }
     setBusy(true);
     setError(null);
-    const { error } = await supabase.auth.updateUser({ password });
-    setBusy(false);
-    if (error) setError(error.message);
-    else setDone(true);
+    try {
+      await auth.setPassword(password);
+      setDone(true);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Could not update the password");
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (done) {

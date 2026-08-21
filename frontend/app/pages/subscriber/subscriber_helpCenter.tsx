@@ -16,7 +16,7 @@ import {
 import { Panel } from "@/app/components/ui/Primitives";
 import TemplateCustomerSupport from "@/app/pages/subscriber/template/template.customer_support";
 import TemplateDocumentation from "@/app/pages/subscriber/template/template.documentation";
-import { supabase } from "@/app/lib/supabase";
+import { api } from "@/app/lib/api";
 import {
   ARTICLES as SEED_ARTICLES,
   FAQS as SEED_FAQS,
@@ -48,13 +48,18 @@ export default function SubscriberHelpCenter() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [a, f] = await Promise.all([
-        supabase.from("help_articles").select("*").eq("published", true).order("position"),
-        supabase.from("help_faqs").select("*").eq("published", true).order("position"),
-      ]);
-      if (cancelled) return;
-      if (!a.error && a.data?.length) setArticles(a.data as Article[]);
-      if (!f.error && f.data?.length) setFaqs(f.data as Faq[]);
+      try {
+        const [a, f] = await Promise.all([
+          api.get<Article[]>("/help/articles"),
+          api.get<Faq[]>("/help/faqs"),
+        ]);
+        if (cancelled) return;
+        if (a.length) setArticles(a);
+        if (f.length) setFaqs(f);
+      } catch {
+        // Seeded content stays on screen — an outage should degrade to
+        // slightly stale help, never to an empty Help Center.
+      }
     })();
     return () => {
       cancelled = true;

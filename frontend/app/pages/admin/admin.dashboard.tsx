@@ -4,9 +4,9 @@ import { useEffect, useState } from "react";
 import { Bar, Frame ,
   type AdminPageProps,
 } from "@/app/components/admin/Workbench";
-import { supabase } from "@/app/lib/supabase";
+import { api } from "@/app/lib/api";
 
-type Counts = { users: number; workspaces: number; runs: number; openTickets: number; contacts: number };
+type Counts = { users: number; workspaces: number; runs: number; open_tickets: number; new_enquiries: number };
 type Recent = { id: string; source_name: string; quality_score: number; status: string; created_at: string };
 type Ticket = { id: string; subject: string; status: string; created_at: string };
 
@@ -21,34 +21,20 @@ export default function AdminDashboard({ account, onOpenNav }: AdminPageProps) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      // head:true returns the count without shipping any rows.
-      const count = (t: string) => supabase.from(t).select("*", { count: "exact", head: true });
-      const [users, workspaces, runs, open, contacts, recentRuns, recentTickets] = await Promise.all([
-        count("profiles"),
-        count("workspaces"),
-        count("runs"),
-        supabase.from("support_tickets").select("*", { count: "exact", head: true }).eq("status", "open"),
-        supabase.from("contact_requests").select("*", { count: "exact", head: true }).eq("handled", false),
-        supabase.from("runs").select("id, source_name, quality_score, status, created_at")
-          .order("created_at", { ascending: false }).limit(10),
-        supabase.from("support_tickets").select("id, subject, status, created_at")
-          .order("created_at", { ascending: false }).limit(6),
-      ]);
-      if (cancelled) return;
-      const failed = [users, workspaces, runs, open, recentRuns].find((r) => r.error);
-      if (failed?.error) {
-        setError(failed.error.message);
-        return;
+      try {
+        // The backend does the counting; RLS decides whose rows are counted.
+        const [overview, runs, tickets] = await Promise.all([
+          api.get<Counts>("/admin/overview"),
+          api.get<Recent[]>("/runs?limit=10"),
+          api.get<Ticket[]>("/tickets"),
+        ]);
+        if (cancelled) return;
+        setCounts(overview);
+        setRecent(runs);
+        setTickets(tickets.slice(0, 6));
+      } catch (e: unknown) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Could not load the overview");
       }
-      setCounts({
-        users: users.count ?? 0,
-        workspaces: workspaces.count ?? 0,
-        runs: runs.count ?? 0,
-        openTickets: open.count ?? 0,
-        contacts: contacts.count ?? 0,
-      });
-      setRecent((recentRuns.data as Recent[]) ?? []);
-      setTickets((recentTickets.data as Ticket[]) ?? []);
     })();
     return () => {
       cancelled = true;
@@ -68,8 +54,8 @@ export default function AdminDashboard({ account, onOpenNav }: AdminPageProps) {
                 ["users", counts.users],
                 ["workspaces", counts.workspaces],
                 ["runs", counts.runs],
-                ["open tickets", counts.openTickets],
-                ["new enquiries", counts.contacts],
+                ["open tickets", counts.open_tickets],
+                ["new enquiries", counts.new_enquiries],
               ]
             : []
         }

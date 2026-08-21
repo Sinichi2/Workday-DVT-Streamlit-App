@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GripVertical, ImagePlus, Plus, Trash2, Type } from "lucide-react";
 import { Bar, DetailHead, Empty, Facts, Frame, Row, Split, type AdminPageProps } from "@/app/components/admin/Workbench";
-import { supabase } from "@/app/lib/supabase";
+import { api, fileForm } from "@/app/lib/api";
 import {
   isImageBlock,
   type ArticleBlock,
@@ -102,12 +102,11 @@ function Tickets({ focusId, onFocusHandled }: { focusId?: string | null; onFocus
   const [q, setQ] = useState("");
 
   const load = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("support_tickets")
-      .select("*, profiles(email, first_name, last_name)")
-      .order("created_at", { ascending: false });
-    if (error) setError(error.message);
-    else setTickets((data as unknown as Ticket[]) ?? []);
+    try {
+      setTickets(await api.get<Ticket[]>("/tickets"));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Could not load the queue");
+    }
   }, []);
 
   useEffect(() => {
@@ -128,9 +127,10 @@ function Tickets({ focusId, onFocusHandled }: { focusId?: string | null; onFocus
   }, [focusId, tickets, onFocusHandled]);
 
   async function setStatus(t: Ticket, status: Ticket["status"]) {
-    const { error } = await supabase.from("support_tickets").update({ status }).eq("id", t.id);
-    if (error) {
-      setError(error.message);
+    try {
+      await api.patch(`/tickets/${t.id}`, { status });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Only staff can change ticket status");
       return;
     }
     setTickets((ts) => (ts ?? []).map((x) => (x.id === t.id ? { ...x, status } : x)));
@@ -370,9 +370,11 @@ function Articles() {
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const { data, error } = await supabase.from("help_articles").select("*").order("position");
-    if (error) setError(error.message);
-    else setRows((data as ArticleRow[]) ?? []);
+    try {
+      setRows(await api.get<ArticleRow[]>("/help/articles?published_only=false"));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Could not load articles");
+    }
   }, []);
 
   useEffect(() => {
@@ -384,12 +386,14 @@ function Articles() {
     setError(null);
     // Drop empty paragraphs so a stray blank block never ships as a gap.
     const body = draft.body.filter((b) => (isImageBlock(b) ? true : Boolean(b.text?.trim())));
-    const { error } = await supabase.from("help_articles").upsert({ ...draft, body });
-    setBusy(false);
-    if (error) {
-      setError(error.message);
+    try {
+      await api.put("/help/articles", { ...draft, body });
+    } catch (e: unknown) {
+      setBusy(false);
+      setError(e instanceof Error ? e.message : "Could not save the article");
       return;
     }
+    setBusy(false);
     setDraft(emptyDraft());
     void load();
   }
@@ -427,9 +431,12 @@ function Articles() {
                     aria-label={`Delete ${a.title}`}
                     onClick={async (e) => {
                       e.stopPropagation();
-                      const { error } = await supabase.from("help_articles").delete().eq("slug", a.slug);
-                      if (error) setError(error.message);
-                      else void load();
+                      try {
+                        await api.del(`/help/articles/${a.slug}`);
+                        void load();
+                      } catch (err: unknown) {
+                        setError(err instanceof Error ? err.message : "Could not delete");
+                      }
                     }}
                     className="shrink-0 rounded p-1 text-muted-foreground-2 hover:bg-critical-subtle hover:text-critical-text"
                   >
@@ -618,16 +625,14 @@ function BlockEditor({
   async function upload(file: File) {
     setUploading(true);
     onError(null);
-    const path = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "-")}`;
-    const { error } = await supabase.storage.from("article-images").upload(path, file, { upsert: false });
-    if (error) {
+    try {
+      const { url } = await api.upload<{ url: string }>("/article-images", fileForm({ file }));
+      onChange([...blocks, { url, alt: "" }]);
+    } catch (e: unknown) {
+      onError(`Upload failed: ${e instanceof Error ? e.message : "unknown error"}`);
+    } finally {
       setUploading(false);
-      onError(`Upload failed: ${error.message}`);
-      return;
     }
-    const { data } = supabase.storage.from("article-images").getPublicUrl(path);
-    onChange([...blocks, { url: data.publicUrl, alt: "" }]);
-    setUploading(false);
   }
 
   return (
@@ -763,9 +768,11 @@ function Faqs() {
   const [a, setA] = useState("");
 
   const load = useCallback(async () => {
-    const { data, error } = await supabase.from("help_faqs").select("*").order("position");
-    if (error) setError(error.message);
-    else setRows((data as FaqRow[]) ?? []);
+    try {
+      setRows(await api.get<FaqRow[]>("/help/faqs?published_only=false"));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Could not load FAQs");
+    }
   }, []);
 
   useEffect(() => {
@@ -788,9 +795,12 @@ function Faqs() {
               </div>
               <button
                 onClick={async () => {
-                  const { error } = await supabase.from("help_faqs").delete().eq("id", f.id);
-                  if (error) setError(error.message);
-                  else void load();
+                  try {
+                    await api.del(`/help/faqs/${f.id}`);
+                    void load();
+                  } catch (err: unknown) {
+                    setError(err instanceof Error ? err.message : "Could not delete");
+                  }
                 }}
                 aria-label={`Delete ${f.question}`}
                 className="shrink-0 rounded p-1 text-muted-foreground-2 hover:bg-critical-subtle hover:text-critical-text"
@@ -820,11 +830,10 @@ function Faqs() {
           <div className="border-t border-border px-4 py-3">
             <button
               onClick={async () => {
-                const { error } = await supabase
-                  .from("help_faqs")
-                  .insert({ question: q, answer: a, position: rows?.length ?? 0 });
-                if (error) {
-                  setError(error.message);
+                try {
+                  await api.post("/help/faqs", { question: q, answer: a, position: rows?.length ?? 0 });
+                } catch (err: unknown) {
+                  setError(err instanceof Error ? err.message : "Could not add the FAQ");
                   return;
                 }
                 setQ("");

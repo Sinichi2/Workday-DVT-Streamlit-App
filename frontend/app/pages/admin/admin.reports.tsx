@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Bar, DetailHead, Empty, Facts, Frame, Row, Split, type AdminPageProps } from "@/app/components/admin/Workbench";
-import { supabase } from "@/app/lib/supabase";
+import { api } from "@/app/lib/api";
 
 type Run = {
   id: string;
@@ -39,15 +39,11 @@ export default function AdminReports({ account, onOpenNav }: AdminPageProps) {
 
   useEffect(() => {
     (async () => {
-      const { data, error } = await supabase
-        .from("runs")
-        .select(
-          "id, source_name, source_path, status, total_rows, rows_passing, rows_failing, quality_score, rules_used, created_at, workspaces(name), profiles(email)",
-        )
-        .order("created_at", { ascending: false })
-        .limit(200);
-      if (error) setError(error.message);
-      else setRuns((data as unknown as Run[]) ?? []);
+      try {
+        setRuns(await api.get<Run[]>("/runs?limit=200"));
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "Could not load runs");
+      }
     })();
   }, []);
 
@@ -59,13 +55,12 @@ export default function AdminReports({ account, onOpenNav }: AdminPageProps) {
     let cancelled = false;
     setFindings(null);
     (async () => {
-      const { data } = await supabase
-        .from("findings")
-        .select("id, row_num, field, severity, issue")
-        .eq("run_id", open.id)
-        .order("row_num")
-        .limit(50);
-      if (!cancelled) setFindings((data as Finding[]) ?? []);
+      try {
+        const f = await api.get<Finding[]>(`/runs/${open.id}/findings?limit=50`);
+        if (!cancelled) setFindings(f);
+      } catch {
+        if (!cancelled) setFindings([]);
+      }
     })();
     return () => {
       cancelled = true;

@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bar, DetailHead, Empty, Facts, Frame, Row, Split, type AdminPageProps } from "@/app/components/admin/Workbench";
-import { fullName, initials, supabase, type AppRole, type Profile } from "@/app/lib/supabase";
+import { api } from "@/app/lib/api";
+import { fullName, initials, type AppRole, type Profile } from "@/app/lib/supabase";
 import { useSession } from "@/app/lib/session";
 
 /** Everything about one account, gathered on demand. Loaded per-selection
@@ -34,9 +35,11 @@ export default function AdminUsers({
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    const { data, error } = await supabase.from("profiles").select("*").order("created_at", { ascending: false });
-    if (error) setError(error.message);
-    else setUsers((data as Profile[]) ?? []);
+    try {
+      setUsers(await api.get<Profile[]>("/profiles"));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Could not load accounts");
+    }
   }, []);
 
   useEffect(() => {
@@ -53,31 +56,23 @@ export default function AdminUsers({
     let cancelled = false;
     setDetail(null);
     (async () => {
-      const [ws, runs, tickets] = await Promise.all([
-        supabase.from("workspace_members").select("role, workspaces(name)").eq("user_id", selected.id),
-        supabase
-          .from("runs")
-          .select("id, source_name, quality_score, created_at")
-          .eq("created_by", selected.id)
-          .order("created_at", { ascending: false })
-          .limit(5),
-        supabase
-          .from("support_tickets")
-          .select("id, subject, status, created_at")
-          .eq("user_id", selected.id)
-          .order("created_at", { ascending: false })
-          .limit(5),
-      ]);
-      if (cancelled) return;
-      setDetail({
-        workspaces:
-          (ws.data ?? []).map((r) => ({
-            name: (r.workspaces as unknown as { name: string } | null)?.name ?? "—",
-            role: r.role as string,
-          })) ?? [],
-        runs: (runs.data as Detail["runs"]) ?? [],
-        tickets: (tickets.data as Detail["tickets"]) ?? [],
-      });
+      try {
+        const [ws, runs, tickets] = await Promise.all([
+          api.get<{ role: string; workspaces: { name: string } | null }[]>(
+            `/workspaces/members?user_id=${selected.id}`,
+          ),
+          api.get<Detail["runs"]>(`/runs?created_by=${selected.id}&limit=5`),
+          api.get<Detail["tickets"]>(`/tickets?user_id=${selected.id}`),
+        ]);
+        if (cancelled) return;
+        setDetail({
+          workspaces: ws.map((r) => ({ name: r.workspaces?.name ?? "—", role: r.role })),
+          runs: runs.slice(0, 5),
+          tickets: tickets.slice(0, 5),
+        });
+      } catch {
+        if (!cancelled) setDetail({ workspaces: [], runs: [], tickets: [] });
+      }
     })();
     return () => {
       cancelled = true;
@@ -93,12 +88,14 @@ export default function AdminUsers({
   async function setRole(user: Profile, role: AppRole) {
     setSaving(true);
     setError(null);
-    const { error } = await supabase.from("profiles").update({ role }).eq("id", user.id);
-    setSaving(false);
-    if (error) {
-      setError(error.message);
+    try {
+      await api.patch(`/profiles/${user.id}`, { role });
+    } catch (e: unknown) {
+      setSaving(false);
+      setError(e instanceof Error ? e.message : "Could not change the role");
       return;
     }
+    setSaving(false);
     setUsers((us) => us.map((u) => (u.id === user.id ? { ...u, role } : u)));
     setSelected((s) => (s && s.id === user.id ? { ...s, role } : s));
   }
