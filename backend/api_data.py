@@ -355,3 +355,122 @@ async def admin_overview(user: User = CurrentUser):
         "open_tickets": await supa.count("support_tickets", {"status": "eq.open"}),
         "new_enquiries": await supa.count("contact_requests", {"handled": "eq.false"}),
     }
+
+
+# --------------------------------------------------------------- subscriber
+
+SEVERITIES = ("critical", "high", "medium", "low")
+
+_NOTE = {
+    "critical": "Hard Stop — blocks the load",
+    "high": "Soft Warning",
+    "medium": "Soft Warning",
+    "low": "Info",
+}
+
+
+def _delta(now: float, before: float | None, unit: str, *, up_is_good: bool) -> dict:
+    """A trend arrow. `direction` is the sign of the change, `good` is whether
+    that change is desirable for this metric — they differ for error counts,
+    where down is good."""
+    if before is None:
+        return {"text": "no prior run", "direction": "flat", "good": True}
+    diff = round(now - before, 1)
+    if diff == 0:
+        return {"text": "unchanged from last run", "direction": "flat", "good": True}
+    sign = "+" if diff > 0 else "−"
+    return {
+        "text": f"{sign}{abs(diff):g}{unit} from last run",
+        "direction": "up" if diff > 0 else "down",
+        "good": (diff >= 0) == up_is_good,
+    }
+
+
+@router.get("/subscriber/dashboard")
+async def subscriber_dashboard(user: User = CurrentUser):
+    """Latest completed run, with the one before it supplying the deltas.
+
+    RLS scopes `runs` to workspaces the caller belongs to, so there is no
+    workspace filter here — asking for "the latest run" already means theirs.
+    """
+    supa = Supa(user.token)
+    runs = await supa.select(
+        "runs",
+        {
+            "select": "id,total_rows,rows_passing,rows_failing,quality_score",
+            "status": "eq.complete",
+            "order": "created_at.desc",
+            "limit": "2",
+        },
+    )
+    if not runs:
+        return None
+
+    latest, prior = runs[0], (runs[1] if len(runs) > 1 else None)
+    findings = await supa.select(
+        "findings", {"select": "severity,field", "run_id": f"eq.{latest['id']}", "limit": "10000"}
+    )
+    dist = {s: sum(1 for f in findings if f["severity"] == s) for s in SEVERITIES}
+    total = sum(dist.values())
+
+    score = float(latest["quality_score"])
+    # No field-mapping coverage is stored anywhere yet, so this reports what the
+    # findings actually prove: how many distinct columns carry at least one
+    # failure. Swap for real coverage when the mapping step persists one.
+    affected = len({f["field"] for f in findings})
+    passed = latest["rows_passing"] / latest["total_rows"] * 100 if latest["total_rows"] else 0.0
+
+    def stat(label, sublabel, hint, value, delta):
+        return {"label": label, "sublabel": sublabel, "hint": hint, "value": value, "delta": delta}
+
+    return {
+        "qualityScore": f"{score:.1f}%",
+        "recordsEvaluated": f"{latest['total_rows']:,} records evaluated",
+        "qualityDelta": _delta(
+            score, float(prior["quality_score"]) if prior else None, "%", up_is_good=True
+        ),
+        "errorTotal": total,
+        "distribution": dist,
+        "stats": [
+            stat(
+                "Fields Affected",
+                "Distinct columns with failures",
+                "Source columns carrying at least one rule failure in this run.",
+                str(affected),
+                _delta(affected, None, "", up_is_good=False),
+            ),
+            stat(
+                "Total Errors",
+                "Across all severity levels",
+                "Every rule failure in this run, from Hard Stop down to Info.",
+                str(total),
+                _delta(
+                    latest["rows_failing"],
+                    prior["rows_failing"] if prior else None,
+                    "",
+                    up_is_good=False,
+                ),
+            ),
+            stat(
+                "Records Passed",
+                "Rows with no failures",
+                "Rows that cleared every rule in the set.",
+                f"{passed:.1f}%",
+                _delta(
+                    passed,
+                    (prior["rows_passing"] / prior["total_rows"] * 100)
+                    if prior and prior["total_rows"]
+                    else None,
+                    "%",
+                    up_is_good=True,
+                ),
+            ),
+        ],
+        "breakdown": [
+            {"severity": s, "label": s.capitalize(), "count": dist[s], "note": _NOTE[s]}
+            for s in SEVERITIES
+        ],
+        # Written by the validation agent once it lands; an empty list renders
+        # the "no insights yet" state rather than invented advice.
+        "insights": [],
+    }
