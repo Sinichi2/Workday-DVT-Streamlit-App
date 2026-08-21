@@ -32,4 +32,4 @@ Disallow: /app
 User-agent: CCBot
 Disallow: /app
 
-Sitemap: https://valigo.com/sitemap.xml
+Sitemap: https://valigo.netlify.app/sitemap.xml

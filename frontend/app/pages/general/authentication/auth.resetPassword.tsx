@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { auth } from "@/app/lib/api";
+import { reportError } from "@/app/lib/errors";
 import {
   AUTH_INPUT,
   AuthShell,
   Field,
-  FormError,
   PasswordInput,
   SubmitButton,
   type AuthView,
@@ -20,7 +20,6 @@ export default function AuthResetPassword({ onNavigate }: { onNavigate: (v: Auth
   const [mode, setMode] = useState<"request" | "update">("request");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
   const [done, setDone] = useState(false);
@@ -35,14 +34,13 @@ export default function AuthResetPassword({ onNavigate }: { onNavigate: (v: Auth
   async function sendLink(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    setError(null);
     try {
       await auth.requestReset(email, typeof window !== "undefined" ? window.location.origin : undefined);
       // Never branch on "user not found" — confirming which addresses have
       // accounts turns this form into an account-enumeration oracle.
       setSent(true);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Could not send the link");
+    } catch (err: unknown) {
+      reportError("auth.requestReset", err);
     } finally {
       setBusy(false);
     }
@@ -50,17 +48,13 @@ export default function AuthResetPassword({ onNavigate }: { onNavigate: (v: Auth
 
   async function setNewPassword(e: React.FormEvent) {
     e.preventDefault();
-    if (password.length < MIN_PASSWORD) {
-      setError(`Password must be at least ${MIN_PASSWORD} characters.`);
-      return;
-    }
+    if (password.length < MIN_PASSWORD) return;
     setBusy(true);
-    setError(null);
     try {
       await auth.setPassword(password);
       setDone(true);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Could not update the password");
+    } catch (err: unknown) {
+      reportError("auth.setPassword", err);
     } finally {
       setBusy(false);
     }
@@ -91,7 +85,6 @@ export default function AuthResetPassword({ onNavigate }: { onNavigate: (v: Auth
               />
             )}
           </Field>
-          <FormError message={error} />
           <SubmitButton busy={busy}>Update password</SubmitButton>
         </form>
       </AuthShell>
@@ -128,7 +121,6 @@ export default function AuthResetPassword({ onNavigate }: { onNavigate: (v: Auth
               />
             )}
           </Field>
-          <FormError message={error} />
           <SubmitButton busy={busy}>Send reset link</SubmitButton>
         </form>
       )}

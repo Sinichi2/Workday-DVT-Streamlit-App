@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Bar, DetailHead, Empty, Facts, Frame, Row, Split, type AdminPageProps } from "@/app/components/admin/Workbench";
 import { api } from "@/app/lib/api";
+import { reportError } from "@/app/lib/errors";
 
 type Run = {
   id: string;
@@ -35,14 +36,13 @@ export default function AdminReports({ account, onOpenNav }: AdminPageProps) {
   const [runs, setRuns] = useState<Run[] | null>(null);
   const [open, setOpen] = useState<Run | null>(null);
   const [findings, setFindings] = useState<Finding[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
         setRuns(await api.get<Run[]>("/runs?limit=200"));
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : "Could not load runs");
+      } catch (err: unknown) {
+        reportError("admin/reports", err);
       }
     })();
   }, []);
@@ -73,11 +73,6 @@ export default function AdminReports({ account, onOpenNav }: AdminPageProps) {
     <div className="-mx-4 -mt-2 sm:-mx-6 lg:-mx-8">
       <Bar account={account} onOpenNav={onOpenNav} section="Admin" title="Runs" stats={[["total", list.length]]} />
 
-      {error && (
-        <p role="alert" className="mx-auto max-w-[1240px] px-4 pt-4 text-xs font-medium text-critical-text sm:px-6">
-          {error}
-        </p>
-      )}
 
       <Split
         list={

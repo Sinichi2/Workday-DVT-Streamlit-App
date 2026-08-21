@@ -6,27 +6,27 @@
 -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://valigo.com/</loc>
+    <loc>https://valigo.netlify.app/</loc>
     <changefreq>monthly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://valigo.com/product</loc>
+    <loc>https://valigo.netlify.app/product</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://valigo.com/pricing</loc>
+    <loc>https://valigo.netlify.app/pricing</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://valigo.com/about</loc>
+    <loc>https://valigo.netlify.app/about</loc>
     <changefreq>yearly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
-    <loc>https://valigo.com/contact</loc>
+    <loc>https://valigo.netlify.app/contact</loc>
     <changefreq>yearly</changefreq>
     <priority>0.5</priority>
   </url>

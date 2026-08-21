@@ -5,6 +5,7 @@ import { Bar, Frame ,
   type AdminPageProps,
 } from "@/app/components/admin/Workbench";
 import { api } from "@/app/lib/api";
+import { reportError } from "@/app/lib/errors";
 
 type Counts = { users: number; workspaces: number; runs: number; open_tickets: number; new_enquiries: number };
 type Recent = { id: string; source_name: string; quality_score: number; status: string; created_at: string };
@@ -16,7 +17,6 @@ export default function AdminDashboard({ account, onOpenNav }: AdminPageProps) {
   const [counts, setCounts] = useState<Counts | null>(null);
   const [recent, setRecent] = useState<Recent[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -32,8 +32,8 @@ export default function AdminDashboard({ account, onOpenNav }: AdminPageProps) {
         setCounts(overview);
         setRecent(runs);
         setTickets(tickets.slice(0, 6));
-      } catch (e: unknown) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Could not load the overview");
+      } catch (err: unknown) {
+        if (!cancelled) reportError("admin/dashboard", err);
       }
     })();
     return () => {
@@ -61,11 +61,6 @@ export default function AdminDashboard({ account, onOpenNav }: AdminPageProps) {
         }
       />
 
-      {error && (
-        <p role="alert" className="mx-auto max-w-[1240px] px-4 pt-4 text-xs font-medium text-critical-text sm:px-6">
-          {error}
-        </p>
-      )}
 
       {/* Two activity feeds side by side - what an operator actually watches,
           rather than a row of metric tiles above a single table. */}

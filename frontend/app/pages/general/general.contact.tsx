@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 import { Card, EASE, Marker, MarketingShell, Reveal } from "@/app/components/marketing/MarketingChrome";
 import { api } from "@/app/lib/api";
+import { reportError } from "@/app/lib/errors";
 
 const FIELD =
   "h-11 w-full rounded-lg border border-[#D9D0C2] bg-[#FDFBF8] px-3.5 text-sm text-[#1B1815] placeholder:text-[#A89B8A] outline-none transition-colors duration-300 focus:border-[#2F4BA8]";
@@ -25,22 +26,22 @@ export default function GeneralContact() {
   });
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    setError(null);
     try {
       // The one endpoint with no auth: it backs the public marketing form.
       // Anonymous callers may insert and may not read, so the form cannot
       // double as a scraper for the lead list.
       await api.postPublic("/contact", form);
       setSent(true);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Could not send the message");
+    } catch (err: unknown) {
+      // Console only — and crucially `sent` stays false, so the confirmation
+      // screen never appears over a message that was not stored.
+      reportError("contact.submit", err);
     } finally {
       setBusy(false);
     }
@@ -144,12 +145,6 @@ export default function GeneralContact() {
                       className="w-full rounded-lg border border-[#D9D0C2] bg-[#FDFBF8] px-3.5 py-3 text-sm text-[#1B1815] placeholder:text-[#A89B8A] outline-none transition-colors duration-300 focus:border-[#2F4BA8]"
                     />
                   </div>
-
-                  {error && (
-                    <p role="alert" className="rounded-lg border border-[#C4726B] bg-[#F8ECEA] px-4 py-3 text-xs text-[#8A3A32]">
-                      {error}
-                    </p>
-                  )}
 
                   <button
                     type="submit"

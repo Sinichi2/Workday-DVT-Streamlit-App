@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { GripVertical, ImagePlus, Plus, Trash2, Type } from "lucide-react";
 import { Bar, DetailHead, Empty, Facts, Frame, Row, Split, type AdminPageProps } from "@/app/components/admin/Workbench";
 import { api, fileForm } from "@/app/lib/api";
+import { reportError } from "@/app/lib/errors";
 import {
   isImageBlock,
   type ArticleBlock,
@@ -95,7 +96,6 @@ const PRIORITY_RANK: Record<Ticket["priority"], number> = { Urgent: 0, High: 1, 
 function Tickets({ focusId, onFocusHandled }: { focusId?: string | null; onFocusHandled?: () => void }) {
   const [tickets, setTickets] = useState<Ticket[] | null>(null);
   const [open, setOpen] = useState<Ticket | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [status, setStatusFilter] = useState<Ticket["status"] | "all">("open");
   const [priority, setPriorityFilter] = useState<Ticket["priority"] | "all">("all");
   const [sort, setSort] = useState<"priority" | "newest">("priority");
@@ -104,8 +104,8 @@ function Tickets({ focusId, onFocusHandled }: { focusId?: string | null; onFocus
   const load = useCallback(async () => {
     try {
       setTickets(await api.get<Ticket[]>("/tickets"));
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Could not load the queue");
+    } catch (err: unknown) {
+      reportError("admin/support", err);
     }
   }, []);
 
@@ -129,8 +129,8 @@ function Tickets({ focusId, onFocusHandled }: { focusId?: string | null; onFocus
   async function setStatus(t: Ticket, status: Ticket["status"]) {
     try {
       await api.patch(`/tickets/${t.id}`, { status });
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Only staff can change ticket status");
+    } catch (err: unknown) {
+      reportError("admin/support", err);
       return;
     }
     setTickets((ts) => (ts ?? []).map((x) => (x.id === t.id ? { ...x, status } : x)));
@@ -160,11 +160,6 @@ function Tickets({ focusId, onFocusHandled }: { focusId?: string | null; onFocus
 
   return (
     <>
-      {error && (
-        <p role="alert" className="mx-auto max-w-[1240px] px-4 pt-4 text-xs font-medium text-critical-text sm:px-6">
-          {error}
-        </p>
-      )}
       <Split
         list={
           <Frame>
@@ -366,14 +361,13 @@ const emptyDraft = (): ArticleRow => ({
 function Articles() {
   const [rows, setRows] = useState<ArticleRow[] | null>(null);
   const [draft, setDraft] = useState<ArticleRow>(emptyDraft());
-  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
       setRows(await api.get<ArticleRow[]>("/help/articles?published_only=false"));
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Could not load articles");
+    } catch (err: unknown) {
+      reportError("admin/support", err);
     }
   }, []);
 
@@ -383,14 +377,13 @@ function Articles() {
 
   async function save() {
     setBusy(true);
-    setError(null);
-    // Drop empty paragraphs so a stray blank block never ships as a gap.
+        // Drop empty paragraphs so a stray blank block never ships as a gap.
     const body = draft.body.filter((b) => (isImageBlock(b) ? true : Boolean(b.text?.trim())));
     try {
       await api.put("/help/articles", { ...draft, body });
-    } catch (e: unknown) {
+    } catch (err: unknown) {
       setBusy(false);
-      setError(e instanceof Error ? e.message : "Could not save the article");
+      reportError("admin/support", err);
       return;
     }
     setBusy(false);
@@ -435,7 +428,7 @@ function Articles() {
                         await api.del(`/help/articles/${a.slug}`);
                         void load();
                       } catch (err: unknown) {
-                        setError(err instanceof Error ? err.message : "Could not delete");
+                        reportError("admin/support", err);
                       }
                     }}
                     className="shrink-0 rounded p-1 text-muted-foreground-2 hover:bg-critical-subtle hover:text-critical-text"
@@ -456,7 +449,6 @@ function Articles() {
       detail={
         <Frame>
           <DetailHead label={draft.slug ? "Editing" : "New article"} title={draft.title || "Untitled"} />
-          {error && <p className="px-4 pt-3 text-xs font-medium text-critical-text">{error}</p>}
 
           <div className="grid gap-2 px-4 py-3">
             <input
@@ -509,7 +501,7 @@ function Articles() {
             />
           </div>
 
-          <BlockEditor blocks={draft.body} onChange={(body) => setDraft((d) => ({ ...d, body }))} onError={setError} />
+          <BlockEditor blocks={draft.body} onChange={(body) => setDraft((d) => ({ ...d, body }))} />
 
           <div className="flex items-center gap-2 border-t border-border px-4 py-3">
             <button
@@ -594,11 +586,9 @@ function ArticlePreview({ draft }: { draft: ArticleRow }) {
 function BlockEditor({
   blocks,
   onChange,
-  onError,
 }: {
   blocks: ArticleBlock[];
   onChange: (b: ArticleBlock[]) => void;
-  onError: (m: string | null) => void;
 }) {
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
@@ -624,12 +614,12 @@ function BlockEditor({
 
   async function upload(file: File) {
     setUploading(true);
-    onError(null);
     try {
       const { url } = await api.upload<{ url: string }>("/article-images", fileForm({ file }));
       onChange([...blocks, { url, alt: "" }]);
-    } catch (e: unknown) {
-      onError(`Upload failed: ${e instanceof Error ? e.message : "unknown error"}`);
+    } catch (err: unknown) {
+      // No block is appended, so a failed upload leaves the body untouched.
+      reportError("admin/articles.upload", err);
     } finally {
       setUploading(false);
     }
@@ -763,15 +753,14 @@ function BlockEditor({
 
 function Faqs() {
   const [rows, setRows] = useState<FaqRow[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [a, setA] = useState("");
 
   const load = useCallback(async () => {
     try {
       setRows(await api.get<FaqRow[]>("/help/faqs?published_only=false"));
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Could not load FAQs");
+    } catch (err: unknown) {
+      reportError("admin/support", err);
     }
   }, []);
 
@@ -799,7 +788,7 @@ function Faqs() {
                     await api.del(`/help/faqs/${f.id}`);
                     void load();
                   } catch (err: unknown) {
-                    setError(err instanceof Error ? err.message : "Could not delete");
+                    reportError("admin/support", err);
                   }
                 }}
                 aria-label={`Delete ${f.question}`}
@@ -815,7 +804,6 @@ function Faqs() {
       detail={
         <Frame>
           <DetailHead label="New" title="Add a question" />
-          {error && <p className="px-4 pt-3 text-xs font-medium text-critical-text">{error}</p>}
           <div className="grid gap-2 px-4 py-3">
             <input className={INPUT} placeholder="Question" aria-label="Question" value={q} onChange={(e) => setQ(e.target.value)} />
             <textarea
@@ -833,7 +821,7 @@ function Faqs() {
                 try {
                   await api.post("/help/faqs", { question: q, answer: a, position: rows?.length ?? 0 });
                 } catch (err: unknown) {
-                  setError(err instanceof Error ? err.message : "Could not add the FAQ");
+                  reportError("admin/support", err);
                   return;
                 }
                 setQ("");

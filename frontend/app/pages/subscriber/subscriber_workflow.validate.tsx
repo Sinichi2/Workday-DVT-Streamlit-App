@@ -15,6 +15,7 @@ import type { Severity } from "@/app/data/subscriber/subscriber.dashboard_data";
 import { api, fileForm } from "@/app/lib/api";
 import { toRun, type ValidateResponse } from "@/app/lib/findings";
 import { completeRun, createRun, failRun, saveFixes } from "@/app/lib/runs";
+import { reportError } from "@/app/lib/errors";
 import { useSession } from "@/app/lib/session";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
@@ -33,7 +34,6 @@ export default function SubscriberWorkflowValidate({ file, onContinue, onComplet
   const [phase, setPhase] = useState<Phase>("idle");
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<ValidationRun | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [fixing, setFixing] = useState(false);
   const [runId, setRunId] = useState<string | null>(null);
   const { profile, workspace } = useSession();
@@ -61,14 +61,15 @@ export default function SubscriberWorkflowValidate({ file, onContinue, onComplet
         await completeRun(run.id, parsed, res.rules_used ?? "bundled_workday_hcm");
         if (ctrl.signal.aborted) return;
         setResult(parsed);
-        setError(null);
         setPhase("done");
         onComplete();
-      } catch (e: unknown) {
+      } catch (err: unknown) {
         if (ctrl.signal.aborted) return;
-        const message = e instanceof Error ? e.message : "Validation failed";
-        if (created) await failRun(created, message);
-        setError(message);
+        // The run is still marked failed in the database — the audit trail is
+        // not silent even though the screen is. Returning to `idle` is what
+        // tells the user it did not complete.
+        if (created) await failRun(created, err instanceof Error ? err.message : "Validation failed");
+        reportError("workflow.validate", err);
         setPhase("idle");
       }
     })();
@@ -93,8 +94,10 @@ export default function SubscriberWorkflowValidate({ file, onContinue, onComplet
               edits.map((e) => ({ row: e.finding.row, field: e.finding.field, value: e.value })),
             );
             setFixing(false);
-          } catch (e: unknown) {
-            setError(e instanceof Error ? e.message : "Could not save fixes");
+          } catch (err: unknown) {
+            // `fixing` stays true, so the screen does not pretend the fixes
+            // were saved and navigate away.
+            reportError("workflow.fixes", err);
           }
         }}
       />
@@ -108,15 +111,6 @@ export default function SubscriberWorkflowValidate({ file, onContinue, onComplet
         title="Run Validation"
         subtitle="Execute validation rules against your mapped data and review results."
       />
-
-      {error && (
-        <p
-          role="alert"
-          className="mt-6 rounded-lg border border-critical-subtle bg-critical-subtle px-4 py-3 text-xs font-medium text-critical-text"
-        >
-          {error}
-        </p>
-      )}
 
       {phase === "idle" && <IdleCard file={file} onRun={() => setConfirming(true)} />}
       {phase === "running" && <RunningCard />}
@@ -135,7 +129,6 @@ export default function SubscriberWorkflowValidate({ file, onContinue, onComplet
           onCancel={() => setConfirming(false)}
           onConfirm={() => {
             setConfirming(false);
-            setError(null);
             setPhase("running");
           }}
         />

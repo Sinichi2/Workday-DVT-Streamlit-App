@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bar, DetailHead, Empty, Facts, Frame, Row, Split, type AdminPageProps } from "@/app/components/admin/Workbench";
 import { api } from "@/app/lib/api";
+import { reportError } from "@/app/lib/errors";
 import { fullName, initials, type AppRole, type Profile } from "@/app/lib/supabase";
 import { useSession } from "@/app/lib/session";
 
@@ -31,14 +32,13 @@ export default function AdminUsers({
   const [selected, setSelected] = useState<Profile | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [query, setQuery] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
       setUsers(await api.get<Profile[]>("/profiles"));
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Could not load accounts");
+    } catch (err: unknown) {
+      reportError("admin/users", err);
     }
   }, []);
 
@@ -87,12 +87,11 @@ export default function AdminUsers({
 
   async function setRole(user: Profile, role: AppRole) {
     setSaving(true);
-    setError(null);
-    try {
+        try {
       await api.patch(`/profiles/${user.id}`, { role });
-    } catch (e: unknown) {
+    } catch (err: unknown) {
       setSaving(false);
-      setError(e instanceof Error ? e.message : "Could not change the role");
+      reportError("admin/users", err);
       return;
     }
     setSaving(false);
@@ -124,11 +123,6 @@ export default function AdminUsers({
         />
       </Bar>
 
-      {error && (
-        <p role="alert" className="mx-auto max-w-[1240px] px-4 pt-4 text-xs font-medium text-critical-text sm:px-6">
-          {error}
-        </p>
-      )}
 
       <Split
         list={
