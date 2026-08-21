@@ -1,43 +1,69 @@
-# Valigo Engine API
+# Valigo engine API
 
-FastAPI wrapper over the four existing engines (profiling, mapping, validation,
-compare). Stateless: it reads an upload, runs the engine, returns JSON, and keeps
-nothing. The engines under `engines/` are copied from the Streamlit repo
-**unchanged**.
+FastAPI wrapper around the four engines (profiling, mapping, validation,
+compare). **Stateless by design** — it processes an upload, returns JSON, and
+keeps nothing. Persistence lives in Supabase, written by the browser under RLS.
+
+## Run it
+
+```bash
+python -m venv .venv
+.venv/Scripts/python -m pip install -r requirements.txt   # or bin/python on unix
+set -a && . ./.env.dev.backend && set +a                  # loads Supabase config
+.venv/Scripts/python -m uvicorn main:app --reload --port 8000
+```
 
 ## Endpoints
 
-| Method | Path        | Body (multipart)                                  | Returns |
-|--------|-------------|---------------------------------------------------|---------|
-| GET    | `/health`   | —                                                 | status  |
-| POST   | `/profile`  | `file`                                            | overview, columns, issues |
-| POST   | `/transform`| `source`, `mapping`, `preview_rows?`              | target preview + summary |
-| POST   | `/validate` | `dataset`, `rules?`, `preview_rows?`             | summary + flagged rows (bundled rules if `rules` omitted) |
-| POST   | `/compare`  | `expected`, `actual`, `key_column`, `preview_rows?` | summary + missing/extra/mismatch |
-| POST   | `/columns`  | `file`                                            | column headers (for the Compare key picker) |
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/health` | Liveness. **Open** — a load balancer has no session. |
+| POST | `/profile` | Summarise a dataset: counts, blanks, duplicates, flagged issues. |
+| POST | `/transform` | Apply a mapping workbook, return the target-shape preview. |
+| POST | `/validate` | Run rules over a dataset. Falls back to the bundled Workday HCM set. |
+| POST | `/compare` | Diff expected vs actual on a key column. |
+| POST | `/columns` | Column headers only — powers the Compare key picker. |
 
-CSV and Excel are both accepted. Interactive docs at `/docs`.
+Everything except `/health` requires a **Supabase access token** as
+`Authorization: Bearer <jwt>`. It is verified locally against the project JWKS
+(`auth.py`) — no per-request round trip to Supabase, and key rotation is a
+non-event.
 
-## Run locally
+`VALIGO_ALLOW_ANONYMOUS=1` disables that check for local work without a
+Supabase project. It defaults to **off** so a misconfigured deploy fails closed
+rather than serving the engine unauthenticated.
+
+## Environment
+
+Set in `.env.dev.backend` (gitignored):
+
+| Variable | Purpose |
+|---|---|
+| `VALIGO_SUPABASE_URL` | Project URL. Also derives the JWKS URL and issuer. |
+| `VALIGO_SUPABASE_JWKS_URL` | Optional override for the JWKS endpoint. |
+| `VALIGO_SUPABASE_PUBLISHABLE_KEY` | Anon key. Safe to ship — RLS is the protection, not key secrecy. |
+| `VALIGO_SUPABASE_SECRET_KEY` | Service role. **Server only, never in the browser.** |
+| `VALIGO_SUPABASE_DATABASE_PW` | Direct Postgres password, for applying migrations. |
+| `ALLOWED_ORIGINS` | Comma-separated CORS origins. `*` is local-dev only. |
+
+## Database
+
+Migrations are in [`../supabase/migrations/`](../supabase/migrations), applied
+in order. `0001` is the schema, RLS and storage bucket; `0003` is a security fix
+worth reading before you touch the profiles policies.
+
+## test_rls.py
+
+Regression check for row-level security — privilege escalation, tenant
+isolation, and that legitimate access still works. **Run it after changing any
+policy, the `profiles` table, or the `protect_profile_columns` trigger.**
 
 ```bash
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
-# open http://localhost:8000/docs
+VALIGO_E2E_PASSWORD=<password> .venv/Scripts/python test_rls.py
 ```
 
-## Deploy (AWS App Runner)
-
-```bash
-docker build -t valigo-api .
-# push to ECR, then point App Runner at the image, or:
-docker run -p 8000:8000 -e ALLOWED_ORIGINS="https://<your-site>.netlify.app" valigo-api
-```
-
-Set `ALLOWED_ORIGINS` to your Netlify URL in production (comma-separated for
-several). Do **not** leave it as `*` once the front end is on a real domain.
-
-> Deploy this as a container (App Runner / ECS / Lightsail), **not** as a
-> Netlify Function or Lambda + API Gateway — a real validate/compare over a
-> large extract will exceed the ~29s serverless timeout. The container has no
-> such wall.
+It needs two accounts to exist (`VALIGO_E2E_USER`, `VALIGO_E2E_ADMIN` — default
+to `e2e.user@valigo.test` / `e2e.admin@valigo.test`, the second with
+`profiles.role = 'admin'`). The password is **not** defaulted in the file: these
+open real accounts in a live project, so a fallback would commit a working
+credential. Skips cleanly if unset.

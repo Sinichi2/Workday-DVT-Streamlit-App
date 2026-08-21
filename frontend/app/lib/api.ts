@@ -1,9 +1,20 @@
+import { authHeader } from "@/app/lib/supabase";
+
 /** The engine API. Every endpoint is POST multipart in, JSON out — the backend
- *  is stateless, so there is nothing to cache, no session, and no client. */
+ *  is stateless, so there is nothing to cache and no client to keep.
+ *
+ *  It is NOT unauthenticated: the engine reads uploaded HR extracts, so each
+ *  call carries the caller's Supabase access token and the backend verifies it
+ *  against the project JWKS before touching the file. */
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export async function post<T>(path: string, form: FormData, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { method: "POST", body: form, signal });
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    body: form,
+    signal,
+    headers: await authHeader(),
+  });
   if (!res.ok) {
     // FastAPI puts the useful message in `detail`; fall back to the status.
     const body = await res.json().catch(() => null);

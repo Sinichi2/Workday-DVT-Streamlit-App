@@ -20,6 +20,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
+from auth import CurrentUser, User
 from engines import compare_engine, mapping_engine, profiling_engine, validation_engine
 from loaders import load_dataframe, load_excel_bytes
 from serialization import clean_dict, df_to_records
@@ -38,17 +39,18 @@ app.add_middleware(
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
 @app.get("/health")
 def health():
+    """Open by design — a load balancer has no session to present."""
     return {"status": "ok", "service": "valigo-engine-api"}
 
 
 @app.post("/profile")
-async def profile(file: UploadFile = File(...)):
+async def profile(file: UploadFile = File(...), user: User = CurrentUser):
     """Stage 1 — profile a raw dataset."""
     df = await load_dataframe(file)
     overview, per_column, issues_df, log = profiling_engine.profile_dataset(df)
@@ -65,6 +67,7 @@ async def transform(
     source: UploadFile = File(...),
     mapping: UploadFile = File(...),
     preview_rows: int = Form(100),
+    user: User = CurrentUser,
 ):
     """Stage 2 — map a source dataset into target (Workday) shape."""
     source_df = await load_dataframe(source)
@@ -92,6 +95,7 @@ async def validate(
     dataset: UploadFile = File(...),
     rules: UploadFile | None = File(None),
     preview_rows: int = Form(500),
+    user: User = CurrentUser,
 ):
     """Stage 3 — run business rules over a (target-shape) dataset.
 
@@ -144,6 +148,7 @@ async def compare(
     actual: UploadFile = File(...),
     key_column: str = Form(...),
     preview_rows: int = Form(500),
+    user: User = CurrentUser,
 ):
     """Stage 4 — fidelity check: compare what was loaded vs what came back."""
     expected_df = await load_dataframe(expected)
@@ -180,7 +185,7 @@ async def compare(
 
 
 @app.post("/columns")
-async def columns_probe(file: UploadFile = File(...)):
+async def columns_probe(file: UploadFile = File(...), user: User = CurrentUser):
     """Helper for the Compare screen's key picker: return the column headers of
     an uploaded file without running any comparison."""
     df = await load_dataframe(file)

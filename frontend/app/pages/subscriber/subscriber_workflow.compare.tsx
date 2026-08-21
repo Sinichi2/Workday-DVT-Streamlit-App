@@ -1,242 +1,274 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Check, Save } from "lucide-react";
-import {
-  AiCard,
-  ContinueButton,
-  WorkflowHeader,
-} from "@/app/components/workflow/WorkflowChrome";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { ArrowLeftRight, UploadCloud } from "lucide-react";
+import { ContinueButton, WorkflowHeader } from "@/app/components/workflow/WorkflowChrome";
 import { Code, Panel, Th } from "@/app/components/ui/Primitives";
-import {
-  DUMMY_COLUMN_MATCHES,
-  DUMMY_COMPARISON,
-  type ColumnMatch,
-} from "@/app/data/subscriber/subscriber.workflow_data";
+import { fileForm, post } from "@/app/lib/api";
 
-// TODO(backend): step 1 should come from the auto-matcher and step 2 from a real
-// diff of the sampled record against the Workday target.
+type CompareResponse = {
+  summary: {
+    expected_rows: number;
+    actual_rows: number;
+    matched_keys: number;
+    missing_rows: number;
+    extra_rows: number;
+    rows_with_mismatch: number;
+    field_mismatch_count: number;
+    match_pct: number;
+  };
+  field_mismatches: Record<string, string | number | null>[];
+  missing_rows: Record<string, string | number | null>[];
+  extra_rows: Record<string, string | number | null>[];
+};
 
-type Props = { onComplete: () => void };
+type Props = { file: File | null; onComplete: () => void };
 
-export default function SubscriberWorkflowCompare({ onComplete }: Props) {
-  const [step, setStep] = useState<1 | 2>(1);
-  return step === 1 ? <MapColumns onNext={() => setStep(2)} /> : <Comparison onComplete={onComplete} />;
-}
+/** Stage 4 — fidelity check. Compares what you loaded against what the target
+ *  system gave back, keyed on a column you choose. The key picker is populated
+ *  from the file itself via /columns, so a typo can't silently match nothing. */
+export default function SubscriberWorkflowCompare({ file, onComplete }: Props) {
+  const expectedId = useId();
+  const actualId = useId();
+  const keyId = useId();
 
-// Map Source Columns to Target Fields
+  const [expected, setExpected] = useState<File | null>(file);
+  const [actual, setActual] = useState<File | null>(null);
+  const [columns, setColumns] = useState<string[]>([]);
+  const [keyColumn, setKeyColumn] = useState("");
+  const [result, setResult] = useState<CompareResponse | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-function MapColumns({ onNext }: { onNext: () => void }) {
-  const [matches, setMatches] = useState<ColumnMatch[]>(DUMMY_COLUMN_MATCHES);
+  const loadColumns = useCallback(async (f: File) => {
+    try {
+      const res = await post<{ columns: string[] }>("/columns", fileForm({ file: f }));
+      setColumns(res.columns);
+      // Pre-select the first column that looks like an identifier rather than
+      // making the reviewer hunt for it.
+      setKeyColumn(res.columns.find((c) => /id$/i.test(c.trim())) ?? res.columns[0] ?? "");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Could not read that file");
+    }
+  }, []);
 
-  const pending = matches.filter((m) => m.confidence === "confirm").length;
-  const auto = matches.length - pending;
+  // The expected side is pre-filled from the Profile step, but a file that
+  // arrives as a prop never goes through the picker — without this its columns
+  // are never fetched and the key select stays empty, leaving Run permanently
+  // disabled with nothing on screen explaining why.
+  useEffect(() => {
+    if (file) void loadColumns(file);
+  }, [file, loadColumns]);
 
-  function confirm(source: string) {
-    setMatches((ms) => ms.map((m) => (m.source === source ? { ...m, confidence: "auto" } : m)));
+  async function chooseExpected(f: File | undefined) {
+    if (!f) return;
+    setExpected(f);
+    setResult(null);
+    setError(null);
+    await loadColumns(f);
   }
 
-  function retarget(source: string, target: string) {
-    setMatches((ms) => ms.map((m) => (m.source === source ? { ...m, target } : m)));
+  async function run() {
+    if (!expected || !actual || !keyColumn) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setResult(
+        await post<CompareResponse>("/compare", fileForm({ expected, actual, key_column: keyColumn })),
+      );
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Compare failed");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  return (
-    <div className="mx-auto w-full max-w-[845px] py-4 sm:py-6 lg:p-8">
-      <WorkflowHeader crumb="Compare · Step 1 of 2" title="Map Source Columns to Target Fields" />
-
-      <div className="flex flex-wrap items-center gap-4 pt-8">
-        <span className="inline-flex items-center gap-2 rounded-lg bg-success-subtle px-3 py-2 text-xs text-success-text">
-          <Check size={14} aria-hidden /> {auto} auto-matched
-        </span>
-        {pending > 0 && (
-          <span className="rounded-lg bg-medium-subtle px-3 py-2 text-xs text-medium-text">
-            {pending} need your review
-          </span>
-        )}
-      </div>
-
-      <Panel className="mt-5 overflow-x-auto">
-        <table className="w-full min-w-[720px] border-collapse">
-          <thead>
-            <tr className="border-b border-border-strong">
-              <Th>Source Column</Th>
-              <Th className="px-2" aria-label="maps to" />
-              <Th className="border-l border-border-strong">Workday Target Field</Th>
-              <Th className="w-[120px]">Confidence</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {matches.map((m) => (
-              <tr
-                key={m.source}
-                // The amber wash marks the rows still waiting on a human, so the
-                // work left is visible without reading the confidence column.
-                className={`border-b border-border-strong last:border-0 ${
-                  m.confidence === "confirm" ? "bg-medium-subtle/40" : ""
-                }`}
-              >
-                <td className="px-5 py-3">
-                  <Code>{m.source}</Code>{" "}
-                  <span className="text-xs text-muted-foreground-2">({m.sourceLabel})</span>
-                </td>
-                <td className="px-2 text-center text-xs text-muted-foreground-2" aria-hidden>
-                  →
-                </td>
-                <td className="border-l border-border-strong px-5 py-3">
-                  <label className="sr-only" htmlFor={`tgt-${m.source}`}>
-                    Workday target field for {m.source}
-                  </label>
-                  <input
-                    id={`tgt-${m.source}`}
-                    value={m.target}
-                    onChange={(e) => retarget(m.source, e.target.value)}
-                    className="w-full rounded-lg border border-border-strong bg-surface px-2.5 py-1.5 text-xs"
-                  />
-                </td>
-                <td className="px-5 py-3">
-                  {m.confidence === "auto" ? (
-                    <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-success-text">
-                      <Check size={12} aria-hidden /> Auto-matched
-                    </span>
-                  ) : (
-                    <button
-                      onClick={() => confirm(m.source)}
-                      className="rounded-md border border-medium px-2.5 py-1 text-[11px] font-medium text-medium-text hover:bg-medium-subtle"
-                    >
-                      Confirm
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Panel>
-
-      <div className="flex flex-wrap items-center justify-between gap-3 pt-6">
-        {/* <p className="text-xs text-muted-foreground-2">
-          {pending > 0 ? `${pending} mapping${pending === 1 ? "" : "s"} still need confirming` : "All mappings confirmed"}
-        </p> */}
-        <ContinueButton
-          label="Confirm Mappings & Compare"
-          disabled={pending > 0}
-          disabledReason="Confirm every reviewed mapping first"
-          onClick={onNext}
-        />
-      </div>
-    </div>
-  );
-}
-
-// Step 2 — Source vs Target Comparison
-
-function Comparison({ onComplete }: { onComplete: () => void }) {
-  const [saved, setSaved] = useState(false);
-  const run = DUMMY_COMPARISON;
-  const matched = useMemo(() => run.diffs.filter((d) => d.match).length, [run.diffs]);
+  const s = result?.summary;
 
   return (
-    <div className="mx-auto w-full max-w-[845px] py-4 sm:py-6 lg:p-8">
-      <WorkflowHeader crumb="Compare · Step 2 of 2" title="Source vs Target Comparison" />
+    <div className="mx-auto w-full max-w-[1024px] py-4 sm:py-6 lg:p-8">
+      <WorkflowHeader
+        crumb="Compare"
+        title="Compare Expected vs Actual"
+        subtitle="Check what the target system returned against what you sent it, row by row and field by field."
+      />
 
-      <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Panel className="p-4">
-          <p className="text-xs text-muted-foreground-2">Field Match Rate</p>
-          <p className="pt-1 text-3xl font-semibold leading-9 text-success">{run.matchRate}</p>
-          <p className="pt-1 text-xs text-muted-foreground-2">Sample: Row {run.sampleRow}</p>
-        </Panel>
-        <Panel className="p-4">
-          <p className="text-xs text-muted-foreground-2">Exact Matches</p>
-          <p className="pt-1 text-3xl font-semibold leading-9">{run.exact}</p>
-          <p className="pt-1 text-xs text-muted-foreground-2">of {run.fields} fields</p>
-        </Panel>
-        <Panel className="p-4">
-          <p className="text-xs text-muted-foreground-2">Mismatches</p>
-          <p className="pt-1 text-3xl font-semibold leading-9 text-critical-text">{run.mismatches}</p>
-          <p className="pt-1 text-xs text-muted-foreground-2">require action</p>
-        </Panel>
-      </div>
-
-      <div className="pt-5">
-        <AiCard
-          label="AI Recommendation"
-          body={run.aiRecommendation}
-          autoFixCount={run.autoFixable}
-          manualCount={run.manualFixes}
-        />
-      </div>
-
-      <Panel className="mt-5 overflow-x-auto">
-        <table className="w-full min-w-[720px] border-collapse">
-          <thead>
-            <tr className="border-b border-border-strong">
-              <Th>Field</Th>
-              <Th className="border-l border-border-strong">Source Value</Th>
-              <Th className="border-l border-border-strong">Target Value</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {run.diffs.map((d) => (
-              <tr
-                key={d.field}
-                className={`border-b border-border-strong last:border-0 ${d.match ? "" : "bg-critical-subtle/30"}`}
-              >
-                <td className="px-5 py-3">
-                  <span className="flex items-center gap-2">
-                    <span
-                      className={`size-1.5 shrink-0 rounded-full ${d.match ? "bg-success" : "bg-critical"}`}
-                      aria-hidden
-                    />
-                    <Code className="text-muted-foreground">{d.field}</Code>
-                    {/* The dot alone is color-only; name the state for SR users. */}
-                    <span className="sr-only">{d.match ? "matches" : "mismatch"}</span>
-                  </span>
-                </td>
-                <td className="border-l border-border-strong px-5 py-3">
-                  <Value value={d.sourceValue} className={d.match ? "text-muted-foreground" : "text-critical-text"} />
-                </td>
-                <td className="border-l border-border-strong px-5 py-3">
-                  <span className="flex items-center justify-between gap-3">
-                    <Value value={d.targetValue} className={d.match ? "text-success-text" : ""} />
-                    {d.note && <span className="shrink-0 text-[11px] text-muted-foreground-2">{d.note}</span>}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Panel>
-
-      <div className="flex flex-wrap items-center justify-between gap-3 pt-6">
-        <p className="text-xs text-muted-foreground-2">
-          Validation complete · <span className="text-success-text">{matched} fields match</span> ·{" "}
-          <span className="text-critical-text">{run.mismatches} need resolution</span>
-        </p>
-        <div className="flex gap-3">
-          <button className="rounded-lg border border-border-strong px-4 py-2.5 text-sm font-medium text-muted-foreground hover:bg-surface-muted">
-            Export Report
-          </button>
-          <button
-            onClick={() => {
-              setSaved(true);
-              onComplete();
+      <Panel className="mt-8 p-5">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <FilePicker
+            id={expectedId}
+            label="Expected (what you loaded)"
+            file={expected}
+            onPick={chooseExpected}
+          />
+          <FilePicker
+            id={actualId}
+            label="Actual (what came back)"
+            file={actual}
+            onPick={(f) => {
+              setActual(f ?? null);
+              setResult(null);
             }}
-            className="inline-flex items-center gap-2 rounded-lg bg-success px-5 py-2.5 text-sm font-medium text-accent-foreground hover:brightness-95"
+          />
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-end gap-4">
+          <div className="min-w-[220px] flex-1">
+            <label htmlFor={keyId} className="block pb-1.5 text-xs font-medium text-muted-foreground">
+              Key column
+            </label>
+            <select
+              id={keyId}
+              value={keyColumn}
+              onChange={(e) => setKeyColumn(e.target.value)}
+              disabled={columns.length === 0}
+              className="h-[38px] w-full rounded-lg border border-border-strong bg-background px-3 text-sm disabled:opacity-60"
+            >
+              {columns.length === 0 && <option>Choose the expected file first</option>}
+              {columns.map((c) => (
+                <option key={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={run}
+            disabled={!expected || !actual || !keyColumn || busy}
+            title={!actual ? "Both files are required" : undefined}
+            className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-accent-foreground hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-muted-foreground-2"
           >
-            {saved ? <Check size={14} aria-hidden /> : <Save size={14} aria-hidden />}
-            {saved ? "Run saved" : "Complete & Save Run"}
+            <ArrowLeftRight size={14} aria-hidden /> {busy ? "Comparing…" : "Run comparison"}
           </button>
         </div>
+      </Panel>
+
+      {error && (
+        <p role="alert" className="mt-4 rounded-lg bg-critical-subtle px-4 py-3 text-xs font-medium text-critical-text">
+          {error}
+        </p>
+      )}
+
+      {s && (
+        <>
+          <div className="animate-rise mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <Panel className="p-4">
+              <p className="text-2xl font-semibold leading-8 text-success">{s.match_pct}%</p>
+              <p className="pt-1 text-xs text-muted-foreground-2">Match rate</p>
+            </Panel>
+            {(
+              [
+                [s.matched_keys.toLocaleString(), "Matched keys"],
+                [s.missing_rows.toLocaleString(), "Missing rows"],
+                [s.extra_rows.toLocaleString(), "Extra rows"],
+                [s.field_mismatch_count.toLocaleString(), "Field mismatches"],
+              ] as [string, string][]
+            ).map(([value, label]) => (
+              <Panel key={label} className="p-4">
+                <p className="text-2xl font-semibold leading-8">{value}</p>
+                <p className="pt-1 text-xs text-muted-foreground-2">{label}</p>
+              </Panel>
+            ))}
+          </div>
+
+          <DiffTable title="Field mismatches" rows={result.field_mismatches} />
+          <DiffTable title="Missing rows — sent but not returned" rows={result.missing_rows} />
+          <DiffTable title="Extra rows — returned but never sent" rows={result.extra_rows} />
+        </>
+      )}
+
+      <div className="flex justify-end pt-6">
+        <ContinueButton
+          label="Complete & Save Run"
+          disabled={!result}
+          disabledReason="Run a comparison first"
+          onClick={onComplete}
+        />
       </div>
     </div>
   );
 }
 
-/** A cell value, with the design's italic "empty" for a missing one. */
-function Value({ value, className = "" }: { value: string | null; className?: string }) {
-  return value === null ? (
-    <Code className="italic text-muted-foreground-2">empty</Code>
-  ) : (
-    <Code className={className}>{value}</Code>
+function FilePicker({
+  id,
+  label,
+  file,
+  onPick,
+}: {
+  id: string;
+  label: string;
+  file: File | null;
+  onPick: (f: File | undefined) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  return (
+    <div>
+      <label htmlFor={id} className="block pb-1.5 text-xs font-medium text-muted-foreground">
+        {label}
+      </label>
+      <input
+        ref={ref}
+        id={id}
+        type="file"
+        accept=".csv,.xlsx,.xls,.xlsm"
+        className="sr-only"
+        onChange={(e) => onPick(e.target.files?.[0])}
+      />
+      <button
+        onClick={() => ref.current?.click()}
+        className="flex h-[38px] w-full items-center gap-2 rounded-lg border border-border-strong bg-background px-3 text-left text-sm hover:bg-surface-muted"
+      >
+        <UploadCloud size={14} className="shrink-0 text-muted-foreground-2" aria-hidden />
+        <span className={`min-w-0 truncate ${file ? "" : "text-muted-foreground-2"}`}>
+          {file ? file.name : "Choose a file…"}
+        </span>
+      </button>
+    </div>
+  );
+}
+
+/** The engine returns arbitrary column sets per diff, so the table is derived
+ *  from the first row rather than a fixed schema. */
+function DiffTable({ title, rows }: { title: string; rows: Record<string, string | number | null>[] }) {
+  if (rows.length === 0) {
+    return (
+      <Panel className="mt-4 px-5 py-4">
+        <p className="text-sm font-semibold">{title}</p>
+        <p className="pt-1 text-xs text-muted-foreground-2">None — nothing to review here.</p>
+      </Panel>
+    );
+  }
+  const columns = Object.keys(rows[0]);
+  return (
+    <Panel className="mt-4 overflow-x-auto">
+      <div className="flex items-center justify-between border-b border-border-strong px-5 py-3">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <span className="text-xs text-muted-foreground-2">{rows.length.toLocaleString()} shown</span>
+      </div>
+      <table className="w-full border-collapse">
+        <thead>
+          <tr className="border-b border-border-strong">
+            {columns.map((c) => (
+              <Th key={c} className="whitespace-nowrap">
+                {c}
+              </Th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.slice(0, 50).map((row, i) => (
+            <tr key={i} className="border-b border-border last:border-0">
+              {columns.map((c) => (
+                <td key={c} className="whitespace-nowrap px-5 py-2.5 text-xs">
+                  {row[c] === null || row[c] === "" ? (
+                    <span className="italic text-muted-foreground-2">empty</span>
+                  ) : (
+                    <Code>{String(row[c])}</Code>
+                  )}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Panel>
   );
 }

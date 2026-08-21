@@ -14,6 +14,8 @@ import SubscriberFixManually from "@/app/pages/subscriber/subscriber_fixManually
 import type { Severity } from "@/app/data/subscriber/subscriber.dashboard_data";
 import { fileForm, post } from "@/app/lib/api";
 import { toRun, type ValidateResponse } from "@/app/lib/findings";
+import { completeRun, createRun, failRun, saveFixes } from "@/app/lib/runs";
+import { useSession } from "@/app/lib/session";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
 
@@ -33,27 +35,46 @@ export default function SubscriberWorkflowValidate({ file, onContinue, onComplet
   const [result, setResult] = useState<ValidationRun | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fixing, setFixing] = useState(false);
+  const [runId, setRunId] = useState<string | null>(null);
+  const { profile, workspace } = useSession();
 
   // The engine takes no rules file - it falls back to the bundled Workday HCM
   // rule set, so the CSV picked at Profile is the entire request. Aborted on
   // unmount so navigating away mid-run cannot land a result that isn't showing.
   useEffect(() => {
-    if (phase !== "running" || !file) return;
+    if (phase !== "running" || !file || !profile || !workspace) return;
     const ctrl = new AbortController();
-    post<ValidateResponse>("/validate", fileForm({ dataset: file }), ctrl.signal)
-      .then((res) => {
-        setResult(toRun(res));
+    let created: string | null = null;
+
+    (async () => {
+      try {
+        // Record the run and store the source BEFORE the engine sees it, so a
+        // crash mid-validation still leaves an auditable row pointing at the
+        // exact file that caused it.
+        const run = await createRun(workspace.id, profile.id, file);
+        created = run.id;
+        if (ctrl.signal.aborted) return;
+        setRunId(run.id);
+
+        const res = await post<ValidateResponse>("/validate", fileForm({ dataset: file }), ctrl.signal);
+        const parsed = toRun(res);
+        await completeRun(run.id, parsed, res.rules_used ?? "bundled_workday_hcm");
+        if (ctrl.signal.aborted) return;
+        setResult(parsed);
         setError(null);
         setPhase("done");
         onComplete();
-      })
-      .catch((e: unknown) => {
+      } catch (e: unknown) {
         if (ctrl.signal.aborted) return;
-        setError(e instanceof Error ? e.message : "Validation failed");
+        const message = e instanceof Error ? e.message : "Validation failed";
+        if (created) await failRun(created, message);
+        setError(message);
         setPhase("idle");
-      });
+      }
+    })();
+
     return () => ctrl.abort();
-  }, [phase, file, onComplete]);
+  }, [phase, file, profile, workspace, onComplete]);
 
   // Manual remediation takes over the step: one decision per screen, and the
   // table needs the full width the results view was using.
@@ -62,12 +83,18 @@ export default function SubscriberWorkflowValidate({ file, onContinue, onComplet
       <SubscriberFixManually
         findings={result.findings}
         onCancel={() => setFixing(false)}
-        onSave={(edits) => {
-          // TODO(supabase): persist the corrected cells, then re-run validation
-          // so the score reflects them. Nothing is stored yet, so edits live
-          // only as long as this result does - say so rather than implying a save.
-          console.warn(`${edits.length} edit(s) not persisted - no storage wired yet`);
-          setFixing(false);
+        onSave={async (edits) => {
+          if (!runId || !profile) return;
+          try {
+            await saveFixes(
+              runId,
+              edits.map((e) => ({ row: e.finding.row, field: e.finding.field, value: e.value })),
+              profile.id,
+            );
+            setFixing(false);
+          } catch (e: unknown) {
+            setError(e instanceof Error ? e.message : "Could not save fixes");
+          }
         }}
       />
     );
@@ -188,7 +215,7 @@ function Results({
 
   return (
     <>
-      <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="animate-rise mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <Panel className="p-4">
           <p className="text-xs text-muted-foreground-2">Quality Score</p>
           <p className="pt-2 text-4xl font-semibold leading-10 text-success">{run.qualityScore}</p>

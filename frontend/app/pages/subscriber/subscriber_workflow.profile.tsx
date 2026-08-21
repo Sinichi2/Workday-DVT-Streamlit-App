@@ -182,7 +182,7 @@ function ProfileResult({ profile }: { profile: ProfileResponse }) {
   ];
 
   return (
-    <Panel className="mt-6 p-5">
+    <Panel className="animate-rise mt-6 p-5">
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {stats.map(([value, label]) => (
           <div key={label}>

@@ -11,6 +11,7 @@ export type ValidateResponse = {
   findings: Record<string, string | number | null>[];
   rules: Record<string, { field: string; description: string; severity: string }>;
   columns: string[];
+  rules_used?: string;
 };
 
 /** The engine speaks Workday's three tiers; the UI has four. "high" stays empty
