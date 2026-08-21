@@ -12,7 +12,7 @@ import SubscriberReports from "@/app/pages/subscriber/subscriber_reports";
 import SubscriberSettings from "@/app/pages/subscriber/subscriber_settings";
 import { STEP_LABEL, WORKFLOW_ORDER, type Step } from "@/app/data/subscriber/subscriber.workflow_data";
 
-type Route = "Dashboard" | "Profile" | "Transform" | "Validate" | "Compare" | "Reports" | "Settings";
+type Route = "Dashboard" | "Profile" | "Transform" | "Validate" | "Compare" | "Reports";
 
 /** App shell: owns theme, sidebar-collapse, the current route, and the workflow
  *  progress the four steps share. Swap the route state for the router when
@@ -23,6 +23,8 @@ export default function Main() {
   const [route, setRoute] = useState<Route>("Dashboard");
   /** Sidebar drawer, below `lg` only. */
   const [navOpen, setNavOpen] = useState(false);
+  /** Settings floats over whatever page you were on — it isn't a route. */
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Workflow progress lives here because the sidebar and every step read it.
   const [file, setFile] = useState<File | null>(null);
@@ -67,9 +69,10 @@ export default function Main() {
       <Sidebar
         collapsed={collapsed}
         onToggle={() => setCollapsed((c) => !c)}
-        active={route}
+        active={settingsOpen ? "Settings" : route}
         onNavigate={(label) => {
-          setRoute(label as Route);
+          if (label === "Settings") setSettingsOpen(true);
+          else setRoute(label as Route);
           setNavOpen(false); // navigating from the drawer should dismiss it
         }}
         completed={completed.map((s) => STEP_LABEL[s])}
@@ -94,9 +97,9 @@ export default function Main() {
           )}
           {route === "Compare" && <SubscriberWorkflowCompare onComplete={() => complete("compare")} />}
           {route === "Reports" && <SubscriberReports />}
-          {route === "Settings" && <SubscriberSettings />}
         </main>
       </div>
+      <SubscriberSettings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }

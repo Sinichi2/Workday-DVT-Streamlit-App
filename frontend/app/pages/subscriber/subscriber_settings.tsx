@@ -1,7 +1,7 @@
 "use client";
 
-import { useId, useState } from "react";
-import { Download } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { Download, X } from "lucide-react";
 import { DemoBanner } from "@/app/components/banner/DemoBanner";
 import { Panel } from "@/app/components/ui/Primitives";
 import {
@@ -23,38 +23,75 @@ import {
 // the account API; the demo banner comes off once they're real.
 const IS_DEV = process.env.NODE_ENV !== "production";
 
-export default function SubscriberSettings() {
+export default function SubscriberSettings({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tab, setTab] = useState<SettingsTab>("Profile");
+  const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+
+  // showModal() is what puts the dialog in the browser's top layer, and that is
+  // where the backdrop, Escape-to-close, the focus trap and inert background
+  // content all come from — none of it is worth hand-rolling.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (open && !el.open) el.showModal();
+    if (!open && el.open) el.close();
+  }, [open]);
 
   return (
-    <div className="mx-auto w-full max-w-[768px] py-4 sm:py-6 lg:p-8">
-      <h1 className="text-[22px] font-semibold leading-[33px]">Settings</h1>
+    <dialog
+      ref={ref}
+      aria-labelledby={titleId}
+      // Esc closes natively and fires `close` — this is what tells React.
+      onClose={onClose}
+      // Backdrop clicks land on the dialog itself; everything visible is inside
+      // the child, so target identity is the whole test.
+      onClick={(e) => e.target === ref.current && onClose()}
+      // Full-bleed on a phone (the pattern the report drawer already uses), a
+      // centred 768px card from `sm` up. `open:flex` rather than a bare `flex`
+      // so the utility cannot beat the UA's `dialog:not([open]){display:none}`.
+      className="open:flex h-dvh max-h-none w-full max-w-none flex-col overflow-hidden rounded-none border-0 bg-background p-0 text-foreground backdrop:bg-[rgb(10_11_15/0.6)] sm:m-auto sm:h-auto sm:max-h-[calc(100dvh-3rem)] sm:w-[768px] sm:max-w-[calc(100%-3rem)] sm:rounded-2xl sm:border sm:border-border-strong sm:shadow-2xl"
+    >
+      <button
+        onClick={onClose}
+        aria-label="Close settings"
+        className="absolute right-4 top-4 flex size-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+      >
+        <X size={16} aria-hidden />
+      </button>
 
-      {IS_DEV && <DemoBanner className="mt-6" />}
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-8 sm:pt-7 sm:pb-7">
+        <h1 id={titleId} className="text-lg font-semibold leading-7">Settings</h1>
+        <p className="pt-0.5 text-xs text-muted-foreground-2">
+          Manage your account, workspace, and notification preferences.
+        </p>
 
-      <div role="tablist" aria-label="Settings sections" className="mt-7 grid grid-cols-2 gap-1 rounded-xl bg-surface-muted p-1 sm:grid-cols-4">
-        {SETTINGS_TABS.map((t) => (
-          <button
-            key={t}
-            role="tab"
-            aria-selected={tab === t}
-            onClick={() => setTab(t)}
-            className={`rounded-lg py-2 text-xs font-medium transition-colors ${
-              tab === t ? "bg-accent-subtle text-accent-strong" : "text-muted-foreground hover:bg-surface/60"
-            }`}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+        {IS_DEV && <DemoBanner className="mt-6" />}
 
-      <div role="tabpanel" aria-label={tab} className="pt-6">
-        {tab === "Profile" && <ProfilePanel />}
-        {tab === "Workspace" && <WorkspacePanel />}
-        {tab === "Notifications" && <NotificationsPanel />}
-        {tab === "Billing" && <BillingPanel />}
-      </div>
-    </div>
+        <div role="tablist" aria-label="Settings sections" className="mt-7 grid grid-cols-2 gap-1 rounded-xl border border-border bg-surface p-1 sm:grid-cols-4">
+          {SETTINGS_TABS.map((t) => (
+            <button
+              key={t}
+              role="tab"
+              aria-selected={tab === t}
+              onClick={() => setTab(t)}
+              className={`rounded-lg py-2 text-xs font-medium transition-colors ${
+                tab === t ? "bg-accent-subtle text-accent-strong" : "text-muted-foreground hover:bg-surface-muted"
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
+        <div role="tabpanel" aria-label={tab} className="pt-6">
+          {tab === "Profile" && <ProfilePanel />}
+          {tab === "Workspace" && <WorkspacePanel />}
+          {tab === "Notifications" && <NotificationsPanel />}
+          {tab === "Billing" && <BillingPanel />}
+        </div>
+        </div>
+    </dialog>
   );
 }
 
@@ -345,25 +382,37 @@ function NotificationsPanel() {
   const [prefs, setPrefs] = useState<NotificationPref[]>(DUMMY_NOTIFICATIONS);
 
   return (
-    <Section title="Email Alerts" description="Choose when Valigo sends you an email notification.">
-      <div className="px-4 py-2 sm:px-6">
-        {prefs.map((p) => (
-          <div key={p.id} className="flex items-start gap-4 border-b border-border py-4 last:border-0">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">{p.label}</p>
-              <p className="pt-0.5 text-xs text-muted-foreground-2">{p.description}</p>
+    <>
+      <Section title="Email Alerts" description="Choose when Valigo sends you an email notification.">
+        <div className="px-4 py-2 sm:px-6">
+          {prefs.map((p) => (
+            <div key={p.id} className="flex items-start gap-4 border-b border-border py-4 last:border-0">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">{p.label}</p>
+                <p className="pt-0.5 text-xs text-muted-foreground-2">{p.description}</p>
+              </div>
+              <Toggle
+                checked={p.enabled}
+                label={p.label}
+                onChange={(enabled) =>
+                  setPrefs((ps) => ps.map((x) => (x.id === p.id ? { ...x, enabled } : x)))
+                }
+              />
             </div>
-            <Toggle
-              checked={p.enabled}
-              label={p.label}
-              onChange={(enabled) =>
-                setPrefs((ps) => ps.map((x) => (x.id === p.id ? { ...x, enabled } : x)))
-              }
-            />
-          </div>
-        ))}
-      </div>
-    </Section>
+          ))}
+        </div>
+      </Section>
+
+      <Section
+        title="In-App Alerts"
+        description="Control which events appear in your notification feed inside Valigo."
+      >
+        <p className="px-4 py-5 text-sm text-muted-foreground sm:px-6">
+          All critical and high-severity issues always appear in-app. Other alert types follow your email
+          preferences.
+        </p>
+      </Section>
+    </>
   );
 }
 

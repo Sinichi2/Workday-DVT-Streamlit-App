@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Info, Pencil, RotateCw, Sparkles, Wand2, X } from "lucide-react";
 import { Button } from "@/app/components/button/Button";
-import { DemoBanner } from "@/app/components/banner/DemoBanner";
 import { Delta, Panel } from "@/app/components/ui/Primitives";
 import {
   DUMMY_DATA,
@@ -84,29 +83,29 @@ function DashboardBody({ data, demo, onRetry }: { data: DashboardData; demo: boo
 
   return (
     <>
-      {demo && <DemoBanner onRetry={onRetry} className="mb-5" />}
+      {/* {demo && <DemoBanner onRetry={onRetry} className="mb-5" />} */}
 
       {/* Consequence-first: the blocking hard-stops lead, above the reassuring score. */}
-      {crit > 0 && (
-        <div
-          role="alert"
-          className="mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-critical/40 bg-critical-subtle px-4 py-3"
-        >
-          <AlertTriangle size={18} className="text-critical-text" aria-hidden />
-          <p className="flex-1 text-sm">
-            <span className="font-semibold text-critical-text">
-              {crit} critical {crit === 1 ? "error" : "errors"} will block the Workday load.
-            </span>{" "}
-            <span className="text-muted-foreground">Resolve the Hard Stops before go-live.</span>
-          </p>
-          <a
-            href="#insights"
-            className="rounded-lg border border-critical/50 px-3 py-1.5 text-xs font-medium text-critical-text hover:bg-critical/10"
-          >
-            Review required fixes
-          </a>
-        </div>
-      )}
+      {/* {crit > 0 && (
+        // <div
+        //   role="alert"
+        //   className="mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-critical/40 bg-critical-subtle px-4 py-3"
+        // >
+        //   <AlertTriangle size={18} className="text-critical-text" aria-hidden />
+        //   <p className="flex-1 text-sm">
+        //     <span className="font-semibold text-critical-text">
+        //       {crit} critical {crit === 1 ? "error" : "errors"} will block the Workday load.
+        //     </span>{" "}
+        //     <span className="text-muted-foreground">Resolve the Hard Stops before go-live.</span>
+        //   </p>
+        //   <a
+        //     href="#insights"
+        //     className="rounded-lg border border-critical/50 px-3 py-1.5 text-xs font-medium text-critical-text hover:bg-critical/10"
+        //   >
+        //     Review required fixes
+        //   </a>
+        // </div>
+      )} */}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {/* Data Quality Score */}
