@@ -20,6 +20,89 @@ type Props = {
 // shows the same account without a second source of truth.
 export const DEFAULT_USER = { name: "Shiva Cruz", role: "Workspace Owner", initials: "SC" };
 
+/** Theme toggle + account menu. Lives in the subscriber topbar, and inside the
+ *  admin toolbar — the admin console has no room for a second header strip
+ *  whose only job is to hold an avatar. */
+export function AccountControls({
+  dark,
+  onToggleTheme,
+  size = "md",
+}: {
+  dark: boolean;
+  onToggleTheme: () => void;
+  size?: "sm" | "md";
+}) {
+  const { profile, signOut } = useSession();
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
+
+  const account = profile
+    ? {
+        name: fullName(profile),
+        role: profile.role === "admin" ? "Platform admin" : profile.job_title || "Member",
+        initials: initials(profile),
+      }
+    : DEFAULT_USER;
+
+  const box = size === "sm" ? "size-7 text-[11px]" : "size-9 text-sm";
+
+  return (
+    <div className="relative flex items-center gap-2">
+      <button
+        onClick={onToggleTheme}
+        aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
+        className={`flex ${size === "sm" ? "size-7" : "size-9"} items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-surface-muted`}
+      >
+        {dark ? <Sun size={size === "sm" ? 15 : 18} aria-hidden /> : <Moon size={size === "sm" ? 15 : 18} aria-hidden />}
+      </button>
+
+      <button
+        onClick={() => setMenuOpen((o) => !o)}
+        aria-label="Account menu"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        className={`flex ${box} items-center justify-center rounded-full bg-accent font-semibold text-accent-foreground transition-transform hover:scale-105`}
+      >
+        {account.initials}
+      </button>
+
+      {menuOpen && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+          <div
+            role="menu"
+            className="absolute right-0 top-[calc(100%+8px)] z-20 w-60 overflow-hidden rounded-xl border border-border bg-surface shadow-lg"
+          >
+            <div className="flex items-center gap-3 px-4 py-3">
+              <span className="flex size-9 items-center justify-center rounded-full bg-accent text-sm font-semibold text-accent-foreground">
+                {account.initials}
+              </span>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold">{account.name}</div>
+                <div className="truncate text-xs text-muted-foreground">{account.role}</div>
+              </div>
+            </div>
+            <div className="border-t border-border py-1">
+              <MenuItem icon={User} label="My Profile" />
+              <MenuItem icon={Settings} label="Workspace Settings" />
+              <MenuItem icon={Bell} label="Notifications" />
+            </div>
+            <div className="border-t border-border py-1">
+              <MenuItem icon={LogOut} label="Sign out" muted onClick={() => void signOut().then(() => { window.location.href = "/"; })} />
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function Topbar({ dark, onToggleTheme, onOpenNav, user }: Props) {
   const { profile, signOut } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);

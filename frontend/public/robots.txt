@@ -1,0 +1,35 @@
+# Valigo — crawler policy.
+#
+# NOTE: this is a REQUEST. Well-behaved crawlers honour it; nothing else does.
+# It is not a security control. What actually keeps customer data private is
+# Supabase row-level security and the JWT check on the engine API — every path
+# disallowed below already returns nothing without a valid session.
+#
+# Its real job is to keep the product surface out of search results, so
+# workspace names and run ids never land in an index.
+#
+# DEPLOY: replace valigo.com below with the real origin.
+
+User-agent: *
+Allow: /
+Allow: /product
+Allow: /pricing
+Allow: /about
+Allow: /contact
+
+# Authenticated product. Also carries <meta name="robots" content="noindex">,
+# which a crawler that ignores this file will still see.
+Disallow: /app
+
+# Framework internals and any API surface.
+Disallow: /_next/
+Disallow: /api/
+
+# Common scrapers that ignore crawl-delay and provide no referral value.
+User-agent: GPTBot
+Disallow: /app
+
+User-agent: CCBot
+Disallow: /app
+
+Sitemap: https://valigo.com/sitemap.xml

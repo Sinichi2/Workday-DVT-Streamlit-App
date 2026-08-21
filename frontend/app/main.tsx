@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Sidebar } from "@/app/components/navigation/Sidebar";
-import { Topbar } from "@/app/components/navigation/Topbar";
+import { AccountControls, Topbar } from "@/app/components/navigation/Topbar";
 import SubscriberDashboard from "@/app/pages/subscriber/subscriber_dashboard";
 import SubscriberWorkflowProfile from "@/app/pages/subscriber/subscriber_workflow.profile";
 import SubscriberWorkflowTransform from "@/app/pages/subscriber/subscriber_workflow.transform";
@@ -47,6 +47,8 @@ export default function Main() {
   const [navOpen, setNavOpen] = useState(false);
   /** Settings floats over whatever page you were on — it isn't a route. */
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** Ticket to open when Support mounts, set by a deep link from Users. */
+  const [focusTicketId, setFocusTicketId] = useState<string | null>(null);
 
   // Workflow progress lives here because the sidebar and every step read it.
   const [file, setFile] = useState<File | null>(null);
@@ -129,7 +131,11 @@ export default function Main() {
       {/* `min-w-0` lets wide tables shrink instead of stretching the shell;
           `min-h-0` is what lets <main> actually scroll rather than grow. */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <Topbar dark={dark} onToggleTheme={() => setDark((d) => !d)} onOpenNav={() => setNavOpen(true)} />
+        {/* Admin renders its own toolbar and carries the account there, so a
+            second near-empty header strip would just push the console down. */}
+        {!adminRoute && (
+          <Topbar dark={dark} onToggleTheme={() => setDark((d) => !d)} onOpenNav={() => setNavOpen(true)} />
+        )}
         <main className="min-h-0 flex-1 overflow-y-auto px-4 pb-12 pt-2 sm:px-6 lg:px-8">
           {route === "Dashboard" && <SubscriberDashboard />}
           {route === "Profile" && (
@@ -147,10 +153,30 @@ export default function Main() {
           {route === "Reports" && <SubscriberReports />}
           {route === "Help Center" && <SubscriberHelpCenter />}
 
-          {isAdmin && route === "Admin" && <AdminDashboard />}
-          {isAdmin && route === "Users" && <AdminUsers />}
-          {isAdmin && route === "All Reports" && <AdminReports />}
-          {isAdmin && route === "Support" && <AdminSupport />}
+          {isAdmin && route === "Admin" && (
+            <AdminDashboard account={<AccountControls dark={dark} onToggleTheme={() => setDark((d) => !d)} size="sm" />} onOpenNav={() => setNavOpen(true)} />
+          )}
+          {isAdmin && route === "Users" && (
+            <AdminUsers
+              account={<AccountControls dark={dark} onToggleTheme={() => setDark((d) => !d)} size="sm" />}
+              onOpenNav={() => setNavOpen(true)}
+              onOpenTicket={(id) => {
+                setFocusTicketId(id);
+                setRoute("Support");
+              }}
+            />
+          )}
+          {isAdmin && route === "All Reports" && (
+            <AdminReports account={<AccountControls dark={dark} onToggleTheme={() => setDark((d) => !d)} size="sm" />} onOpenNav={() => setNavOpen(true)} />
+          )}
+          {isAdmin && route === "Support" && (
+            <AdminSupport
+              account={<AccountControls dark={dark} onToggleTheme={() => setDark((d) => !d)} size="sm" />}
+              onOpenNav={() => setNavOpen(true)}
+              focusTicketId={focusTicketId}
+              onFocusHandled={() => setFocusTicketId(null)}
+            />
+          )}
           {/* An admin route reached by a non-admin renders nothing rather than
               leaking the page shell; RLS would refuse the data anyway. */}
           {!isAdmin && adminRoute && (

@@ -1,17 +1,37 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
-import { Panel } from "@/app/components/ui/Primitives";
+import { Bar, DetailHead, Empty, Facts, Frame, Row, Split, type AdminPageProps } from "@/app/components/admin/Workbench";
 import { fullName, initials, supabase, type AppRole, type Profile } from "@/app/lib/supabase";
 import { useSession } from "@/app/lib/session";
 
-export default function AdminUsers() {
+/** Everything about one account, gathered on demand. Loaded per-selection
+ *  rather than joined into the list query: the list stays fast, and support
+ *  only ever needs this for the one person they're on the phone with. */
+type Detail = {
+  workspaces: { name: string; role: string }[];
+  runs: { id: string; source_name: string; quality_score: number; created_at: string }[];
+  tickets: { id: string; subject: string; status: string; created_at: string }[];
+};
+
+const ROLE_TONE: Record<string, string> = {
+  owner: "bg-accent-subtle text-accent-strong",
+  editor: "bg-info-subtle text-info-text",
+  viewer: "bg-surface-muted text-muted-foreground",
+};
+
+export default function AdminUsers({
+  account,
+  onOpenNav,
+  onOpenTicket,
+}: AdminPageProps & { onOpenTicket?: (id: string) => void }) {
   const { profile: me } = useSession();
   const [users, setUsers] = useState<Profile[]>([]);
+  const [selected, setSelected] = useState<Profile | null>(null);
+  const [detail, setDetail] = useState<Detail | null>(null);
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     const { data, error } = await supabase.from("profiles").select("*").order("created_at", { ascending: false });
@@ -23,6 +43,47 @@ export default function AdminUsers() {
     void load();
   }, [load]);
 
+  // Pull the selected user's context. Cancelled on change so a slow reply for
+  // a previous selection can't overwrite the current one.
+  useEffect(() => {
+    if (!selected) {
+      setDetail(null);
+      return;
+    }
+    let cancelled = false;
+    setDetail(null);
+    (async () => {
+      const [ws, runs, tickets] = await Promise.all([
+        supabase.from("workspace_members").select("role, workspaces(name)").eq("user_id", selected.id),
+        supabase
+          .from("runs")
+          .select("id, source_name, quality_score, created_at")
+          .eq("created_by", selected.id)
+          .order("created_at", { ascending: false })
+          .limit(5),
+        supabase
+          .from("support_tickets")
+          .select("id, subject, status, created_at")
+          .eq("user_id", selected.id)
+          .order("created_at", { ascending: false })
+          .limit(5),
+      ]);
+      if (cancelled) return;
+      setDetail({
+        workspaces:
+          (ws.data ?? []).map((r) => ({
+            name: (r.workspaces as unknown as { name: string } | null)?.name ?? "—",
+            role: r.role as string,
+          })) ?? [],
+        runs: (runs.data as Detail["runs"]) ?? [],
+        tickets: (tickets.data as Detail["tickets"]) ?? [],
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selected]);
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return users;
@@ -30,94 +91,187 @@ export default function AdminUsers() {
   }, [users, query]);
 
   async function setRole(user: Profile, role: AppRole) {
-    setSaving(user.id);
+    setSaving(true);
     setError(null);
     const { error } = await supabase.from("profiles").update({ role }).eq("id", user.id);
-    setSaving(null);
+    setSaving(false);
     if (error) {
       setError(error.message);
       return;
     }
     setUsers((us) => us.map((u) => (u.id === user.id ? { ...u, role } : u)));
+    setSelected((s) => (s && s.id === user.id ? { ...s, role } : s));
   }
 
+  const admins = users.filter((u) => u.role === "admin").length;
+
   return (
-    <div className="mx-auto w-full max-w-[1024px] px-4 py-6 sm:px-8">
-      <h1 className="text-[22px] font-semibold leading-[33px]">Users</h1>
-      <p className="pt-1 text-sm text-muted-foreground">Every account on the platform and its access level.</p>
-
-      {error && (
-        <p role="alert" className="mt-6 rounded-lg bg-critical-subtle px-4 py-3 text-xs font-medium text-critical-text">
-          {error}
-        </p>
-      )}
-
-      <div className="relative pt-6">
-        <Search
-          size={14}
-          className="pointer-events-none absolute left-3 top-1/2 mt-3 -translate-y-1/2 text-muted-foreground-2"
-          aria-hidden
-        />
+    <div className="-mx-4 -mt-2 sm:-mx-6 lg:-mx-8">
+      <Bar
+        account={account}
+        onOpenNav={onOpenNav}
+        section="Admin"
+        title="Users"
+        stats={[
+          ["accounts", users.length],
+          ["admins", admins],
+        ]}
+      >
         <input
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           aria-label="Search users"
-          placeholder="Search by name or email…"
-          className="h-[38px] w-full max-w-[320px] rounded-lg border border-border-strong bg-surface pl-9 pr-3 text-sm placeholder:text-muted-foreground-2"
+          placeholder="Search name or email…"
+          className="h-8 w-[220px] rounded-md border border-border-strong bg-background px-2.5 text-xs placeholder:text-muted-foreground-2"
         />
-      </div>
+      </Bar>
 
-      <Panel className="mt-5 overflow-x-auto">
-        <table className="w-full min-w-[640px] border-collapse text-left">
-          <thead>
-            <tr className="border-b border-border-strong text-xs font-medium text-muted-foreground-2">
-              <th scope="col" className="px-5 py-3 font-medium">User</th>
-              <th scope="col" className="py-3 pr-4 font-medium">Job title</th>
-              <th scope="col" className="py-3 pr-4 font-medium">Joined</th>
-              <th scope="col" className="px-5 py-3 font-medium">Platform role</th>
-            </tr>
-          </thead>
-          <tbody>
+      {error && (
+        <p role="alert" className="mx-auto max-w-[1240px] px-4 pt-4 text-xs font-medium text-critical-text sm:px-6">
+          {error}
+        </p>
+      )}
+
+      <Split
+        list={
+          <Frame>
             {visible.map((u) => (
-              <tr key={u.id} className="border-b border-border last:border-0">
-                <td className="px-5 py-3">
-                  <span className="flex items-center gap-3">
-                    <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">
-                      {initials(u)}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium">{fullName(u)}</span>
-                      <span className="block truncate text-xs text-muted-foreground-2">{u.email}</span>
-                    </span>
+              <Row key={u.id} selected={selected?.id === u.id} onClick={() => setSelected(u)}>
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-[10px] font-semibold text-accent-foreground">
+                  {initials(u)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-medium">{fullName(u)}</span>
+                  <span className="block truncate font-mono text-[11px] text-muted-foreground-2">{u.email}</span>
+                </span>
+                {u.role === "admin" && (
+                  <span className="shrink-0 rounded bg-accent-subtle px-1.5 py-0.5 text-[10px] font-semibold text-accent-strong">
+                    ADMIN
                   </span>
-                </td>
-                <td className="py-3 pr-4 text-xs text-muted-foreground">{u.job_title || "—"}</td>
-                <td className="py-3 pr-4 text-xs text-muted-foreground-2">
-                  {new Date(u.created_at).toLocaleDateString()}
-                </td>
-                <td className="px-5 py-3">
+                )}
+                <span className="shrink-0 font-mono text-[11px] text-muted-foreground-2">
+                  {new Date(u.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                </span>
+              </Row>
+            ))}
+            {visible.length === 0 && (
+              <p className="px-4 py-10 text-center text-xs text-muted-foreground-2">No accounts match.</p>
+            )}
+          </Frame>
+        }
+        detail={
+          !selected ? (
+            <Empty>Select an account to see their workspaces, runs and tickets.</Empty>
+          ) : (
+            <div className="flex flex-col gap-4">
+              <Frame>
+                <DetailHead
+                  label="Account"
+                  title={fullName(selected)}
+                  right={
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">
+                      {initials(selected)}
+                    </span>
+                  }
+                />
+                <Facts
+                  rows={[
+                    ["Email", <span key="e" className="font-mono">{selected.email}</span>],
+                    ["Job title", selected.job_title || "—"],
+                    ["Timezone", selected.timezone],
+                    ["Joined", new Date(selected.created_at).toLocaleDateString()],
+                    ["User ID", <span key="i" className="font-mono text-[11px]">{selected.id.slice(0, 18)}…</span>],
+                  ]}
+                />
+                <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-3">
+                  <span className="text-xs text-muted-foreground-2">Platform role</span>
                   <select
-                    value={u.role}
-                    // Demoting yourself would revoke the very policy letting you
-                    // see this table, and nothing here could undo it.
-                    disabled={u.id === me?.id || saving === u.id}
-                    title={u.id === me?.id ? "You can't change your own role" : undefined}
-                    onChange={(e) => setRole(u, e.target.value as AppRole)}
-                    className="h-[32px] rounded-lg border border-border-strong bg-surface px-2 text-xs disabled:opacity-60"
+                    value={selected.role}
+                    // Demoting yourself revokes the policy that renders this
+                    // screen, and nothing here could undo it.
+                    disabled={selected.id === me?.id || saving}
+                    title={selected.id === me?.id ? "You can't change your own role" : undefined}
+                    onChange={(e) => setRole(selected, e.target.value as AppRole)}
+                    className="h-8 rounded-md border border-border-strong bg-background px-2 text-xs disabled:opacity-60"
                   >
                     <option value="subscriber">Subscriber</option>
                     <option value="admin">Admin</option>
                   </select>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {visible.length === 0 && (
-          <p className="px-5 py-10 text-center text-xs text-muted-foreground-2">No users match this search.</p>
-        )}
-      </Panel>
+                </div>
+              </Frame>
+
+              <Frame>
+                <DetailHead label="Workspaces" title={`${detail?.workspaces.length ?? 0} membership(s)`} />
+                <div className="px-4 py-3">
+                  {(detail?.workspaces ?? []).map((w) => (
+                    <div key={w.name + w.role} className="flex items-center justify-between gap-3 py-1.5">
+                      <span className="truncate text-xs">{w.name}</span>
+                      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${ROLE_TONE[w.role] ?? ""}`}>
+                        {w.role}
+                      </span>
+                    </div>
+                  ))}
+                  {detail && detail.workspaces.length === 0 && (
+                    <p className="py-2 text-xs text-muted-foreground-2">No workspace membership.</p>
+                  )}
+                  {!detail && <p className="py-2 text-xs text-muted-foreground-2">Loading…</p>}
+                </div>
+              </Frame>
+
+              <Frame>
+                <DetailHead label="Recent runs" title={`${detail?.runs.length ?? 0} shown`} />
+                <div className="px-4 py-3">
+                  {(detail?.runs ?? []).map((r) => (
+                    <div key={r.id} className="flex items-center justify-between gap-3 py-1.5">
+                      <span className="min-w-0 flex-1 truncate text-xs">{r.source_name}</span>
+                      <span className="shrink-0 font-mono text-[11px] text-muted-foreground-2">
+                        {new Date(r.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                      </span>
+                      <span
+                        className={`shrink-0 font-mono text-[11px] ${
+                          Number(r.quality_score) >= 95 ? "text-success-text" : "text-high-text"
+                        }`}
+                      >
+                        {Number(r.quality_score).toFixed(1)}%
+                      </span>
+                    </div>
+                  ))}
+                  {detail && detail.runs.length === 0 && (
+                    <p className="py-2 text-xs text-muted-foreground-2">No runs yet.</p>
+                  )}
+                </div>
+              </Frame>
+
+              <Frame>
+                <DetailHead label="Tickets" title={`${detail?.tickets.length ?? 0} shown`} />
+                <div className="px-4 py-3">
+                  {(detail?.tickets ?? []).map((t) => (
+                    // Opens the ticket in Support rather than duplicating the
+                    // reader here - one place answers a ticket, not two.
+                    <button
+                      key={t.id}
+                      onClick={() => onOpenTicket?.(t.id)}
+                      className="group flex w-full items-center justify-between gap-3 rounded py-1.5 text-left transition-colors hover:bg-surface-muted"
+                    >
+                      <span className="min-w-0 flex-1 truncate text-xs group-hover:text-accent-strong">{t.subject}</span>
+                      <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground-2">
+                        {t.status}
+                      </span>
+                      <span aria-hidden className="shrink-0 text-muted-foreground-2 opacity-0 transition-opacity group-hover:opacity-100">
+                        →
+                      </span>
+                    </button>
+                  ))}
+                  {detail && detail.tickets.length === 0 && (
+                    <p className="py-2 text-xs text-muted-foreground-2">No tickets raised.</p>
+                  )}
+                </div>
+              </Frame>
+            </div>
+          )
+        }
+      />
     </div>
   );
 }
