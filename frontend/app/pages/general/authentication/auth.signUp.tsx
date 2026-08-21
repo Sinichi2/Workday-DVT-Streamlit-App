@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { auth } from "@/app/lib/api";
+import { reportError } from "@/app/lib/errors";
 import {
   AUTH_INPUT,
   AuthShell,
   Field,
-  FormError,
   PasswordInput,
   SubmitButton,
   type AuthView,
@@ -20,7 +20,6 @@ export default function AuthSignUp({ onNavigate }: { onNavigate: (v: AuthView) =
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [check, setCheck] = useState(false);
 
@@ -35,24 +34,18 @@ export default function AuthSignUp({ onNavigate }: { onNavigate: (v: AuthView) =
     e.preventDefault();
     // Re-checked here, not just via `minLength`/state: a paste or an autofill
     // can bypass the native constraint entirely.
-    if (!longEnough) {
-      setError(`Password must be at least ${MIN_PASSWORD} characters.`);
-      return;
-    }
-    if (password !== confirm) {
-      setError("Those passwords don't match.");
-      return;
-    }
+    // These two are already shown inline as field state (the character
+    // countdown and the match indicator), so blocking here is enough.
+    if (!longEnough || password !== confirm) return;
     setBusy(true);
-    setError(null);
     try {
       // The `handle_new_user` trigger reads the names into the profile row, so
       // they survive without a second write the client could fail to make.
       const r = await auth.signUp(email, password, firstName, lastName);
       // No session means the project requires email confirmation.
       if (r.confirm_email) setCheck(true);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Could not create the account");
+    } catch (err: unknown) {
+      reportError("auth.signUp", err);
     } finally {
       setBusy(false);
     }
@@ -171,7 +164,6 @@ export default function AuthSignUp({ onNavigate }: { onNavigate: (v: AuthView) =
           </div>
         </div>
 
-        <FormError message={error} />
         <SubmitButton busy={busy}>Create account</SubmitButton>
       </form>
     </AuthShell>

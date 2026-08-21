@@ -1,0 +1,64 @@
+# Netlify build configuration.
+#
+# The important line here is the plugin. Without it Netlify has no idea `.next`
+# is a Next.js build — it uploads the directory verbatim as static files, which
+# is why pages ended up at paths like `server/app/index.html` and why nothing
+# generated any functions. The Next.js Runtime is what turns that output into
+# real routes plus the server/edge functions that render them.
+#
+# This file lives in `frontend/` because that is the Netlify base directory.
+# Paths below are therefore relative to `frontend/`, not to the repo root.
+
+[build]
+  # `next build` via the package script, so local and CI run the same thing.
+  command = "npm run build"
+  # The Runtime reads this and rewrites it into functions + static assets.
+  # On its own — without the plugin — this is exactly the broken deploy.
+  publish = ".next"
+
+[build.environment]
+  # next@16.3.1 declares engines.node >= 20.9.0. Pinned rather than left to
+  # whatever Netlify's current default happens to be, so a platform default
+  # bump can't break a build that was working.
+  NODE_VERSION = "20"
+
+# LOCKFILE NOTE: this repo has `bun.lock` (Bun's newer text format) and no
+# package-lock.json. Netlify picks its installer by sniffing the lockfile, so
+# leave that to it rather than forcing one here. If a build ever resolves
+# dependency versions you did not expect, that detection is the thing to check
+# first — the fix is to commit a lockfile for whichever installer it chose.
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# --- Headers -----------------------------------------------------------------
+# The product is behind auth and must never be indexed. `/app` already sets
+# `<meta name="robots">`, but a header also covers non-HTML responses and
+# anything that ignores the document.
+[[headers]]
+  for = "/app"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+
+[[headers]]
+  for = "/app/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+
+# Baseline hardening for every response. Deliberately no CSP yet: this app
+# loads Google Fonts and talks to a separate API origin, so a policy written
+# blind would break the site on the first deploy rather than protect it.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    X-Frame-Options = "DENY"
+
+# robots.txt and sitemap.xml are static files in `public/`. The Runtime copies
+# `public/` to the site root, so they resolve at `/robots.txt` and
+# `/sitemap.xml` — but only when the plugin actually runs.
+[[headers]]
+  for = "/sitemap.xml"
+  [headers.values]
+    Content-Type = "application/xml; charset=utf-8"

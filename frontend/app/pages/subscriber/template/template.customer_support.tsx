@@ -8,6 +8,7 @@ import {
 } from "@/app/data/subscriber/subscriber.helpCenter_data";
 import { useSession } from "@/app/lib/session";
 import { api } from "@/app/lib/api";
+import { reportError } from "@/app/lib/errors";
 
 type Props = { open: boolean; onClose: () => void };
 
@@ -27,7 +28,6 @@ export default function TemplateCustomerSupport({ open, onClose }: Props) {
   const [files, setFiles] = useState<File[]>([]);
   const [sent, setSent] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const { profile, workspace } = useSession();
@@ -201,11 +201,6 @@ export default function TemplateCustomerSupport({ open, onClose }: Props) {
             </div>
           </div>
 
-          {error && (
-            <p role="alert" className="px-5 pb-2 text-xs font-medium text-critical-text sm:px-6">
-              {error}
-            </p>
-          )}
 
           <div className="flex items-center justify-end gap-4 border-t border-border-strong px-5 py-4 sm:px-6">
             <button onClick={onClose} className="text-sm text-muted-foreground hover:text-foreground">
@@ -215,8 +210,7 @@ export default function TemplateCustomerSupport({ open, onClose }: Props) {
               onClick={async () => {
                 if (!profile) return;
                 setBusy(true);
-                setError(null);
-                try {
+                                try {
                   // The receipt only shows once the row is actually stored —
                   // "Message sent" over a failed insert is the worst outcome.
                   await api.post("/tickets", {
@@ -227,8 +221,8 @@ export default function TemplateCustomerSupport({ open, onClose }: Props) {
                     context,
                   });
                   setSent(true);
-                } catch (e: unknown) {
-                  setError(e instanceof Error ? e.message : "Could not send the request");
+                } catch (err: unknown) {
+                  reportError("template.customer_support", err);
                 } finally {
                   setBusy(false);
                 }

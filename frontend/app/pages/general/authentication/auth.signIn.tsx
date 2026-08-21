@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useId, useState } from "react";
 import { auth } from "@/app/lib/api";
+import { reportError } from "@/app/lib/errors";
 
 export type AuthView = "signIn" | "signUp" | "reset";
 
@@ -184,13 +185,10 @@ export function PasswordInput({
   );
 }
 
-export function FormError({ message }: { message: string | null }) {
-  if (!message) return null;
-  return (
-    <p role="alert" className="mt-6 border-l-2 border-[#8A3A32] pl-3 text-[13px] leading-relaxed text-[#8A3A32]">
-      {message}
-    </p>
-  );
+/** Renders nothing. Failures go to the console only — see app/lib/errors.ts.
+ *  Kept as a component so the call sites read the same as any other form. */
+export function FormError(_: { message?: string | null }) {
+  return null;
 }
 
 export function SubmitButton({ busy, children }: { busy: boolean; children: React.ReactNode }) {
@@ -210,18 +208,18 @@ export function SubmitButton({ busy, children }: { busy: boolean; children: Reac
 export default function AuthSignIn({ onNavigate }: { onNavigate: (v: AuthView) => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    setError(null);
     try {
       await auth.signIn(email, password);
       // On success the session listener swaps the tree out; nothing to do here.
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Could not sign in");
+    } catch (err: unknown) {
+      // Console only. The form stays as it was, so a wrong password simply
+      // leaves you on the form rather than pretending to have worked.
+      reportError("auth.signIn", err);
     } finally {
       setBusy(false);
     }
@@ -272,7 +270,6 @@ export default function AuthSignIn({ onNavigate }: { onNavigate: (v: AuthView) =
           )}
         </Field>
 
-        <FormError message={error} />
         <SubmitButton busy={busy}>Sign in</SubmitButton>
       </form>
 

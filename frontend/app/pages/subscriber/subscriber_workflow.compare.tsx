@@ -5,6 +5,7 @@ import { ArrowLeftRight, UploadCloud } from "lucide-react";
 import { ContinueButton, WorkflowHeader } from "@/app/components/workflow/WorkflowChrome";
 import { Code, Panel, Th } from "@/app/components/ui/Primitives";
 import { api, fileForm } from "@/app/lib/api";
+import { reportError } from "@/app/lib/errors";
 
 type CompareResponse = {
   summary: {
@@ -38,7 +39,6 @@ export default function SubscriberWorkflowCompare({ file, onComplete }: Props) {
   const [keyColumn, setKeyColumn] = useState("");
   const [result, setResult] = useState<CompareResponse | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const loadColumns = useCallback(async (f: File) => {
     try {
@@ -47,8 +47,8 @@ export default function SubscriberWorkflowCompare({ file, onComplete }: Props) {
       // Pre-select the first column that looks like an identifier rather than
       // making the reviewer hunt for it.
       setKeyColumn(res.columns.find((c) => /id$/i.test(c.trim())) ?? res.columns[0] ?? "");
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Could not read that file");
+    } catch (err: unknown) {
+      reportError("workflow.compare", err);
     }
   }, []);
 
@@ -64,20 +64,18 @@ export default function SubscriberWorkflowCompare({ file, onComplete }: Props) {
     if (!f) return;
     setExpected(f);
     setResult(null);
-    setError(null);
-    await loadColumns(f);
+        await loadColumns(f);
   }
 
   async function run() {
     if (!expected || !actual || !keyColumn) return;
     setBusy(true);
-    setError(null);
-    try {
+        try {
       setResult(
         await api.upload<CompareResponse>("/compare", fileForm({ expected, actual, key_column: keyColumn })),
       );
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Compare failed");
+    } catch (err: unknown) {
+      reportError("workflow.compare", err);
     } finally {
       setBusy(false);
     }
@@ -141,11 +139,6 @@ export default function SubscriberWorkflowCompare({ file, onComplete }: Props) {
         </div>
       </Panel>
 
-      {error && (
-        <p role="alert" className="mt-4 rounded-lg bg-critical-subtle px-4 py-3 text-xs font-medium text-critical-text">
-          {error}
-        </p>
-      )}
 
       {s && (
         <>

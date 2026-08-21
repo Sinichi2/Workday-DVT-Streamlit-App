@@ -5,6 +5,7 @@ import { FileText, UploadCloud, X } from "lucide-react";
 import { ContinueButton, WorkflowHeader } from "@/app/components/workflow/WorkflowChrome";
 import { Panel } from "@/app/components/ui/Primitives";
 import { api, fileForm } from "@/app/lib/api";
+import { reportError } from "@/app/lib/errors";
 
 type ProfileResponse = {
   overview: {
@@ -32,7 +33,6 @@ type Props = { file: File | null; onFile: (file: File | null) => void; onContinu
 
 export default function SubscriberWorkflowProfile({ file, onFile, onContinue }: Props) {
   const [dragging, setDragging] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [profiling, setProfiling] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -50,12 +50,11 @@ export default function SubscriberWorkflowProfile({ file, onFile, onContinue }: 
     api.upload<ProfileResponse>("/profile", fileForm({ file }), ctrl.signal)
       .then((res) => {
         setProfile(res);
-        setError(null);
-      })
-      .catch((e: unknown) => {
+              })
+      .catch((err: unknown) => {
         if (ctrl.signal.aborted) return;
         setProfile(null);
-        setError(e instanceof Error ? e.message : "Could not profile this file");
+        reportError("workflow.profile", err);
       })
       .finally(() => {
         if (!ctrl.signal.aborted) setProfiling(false);
@@ -65,16 +64,17 @@ export default function SubscriberWorkflowProfile({ file, onFile, onContinue }: 
 
   function accept(candidate: File | undefined) {
     if (!candidate) return;
+    // Client-side gate. Rejecting is the feedback: the file simply is not
+    // accepted, and the reason goes to the console.
     if (!candidate.name.toLowerCase().endsWith(".csv")) {
-      setError(`“${candidate.name}” isn’t a .csv file. Export your source extract as CSV and try again.`);
+      reportError("workflow.profile", new Error(`${candidate.name} is not a .csv file`));
       return;
     }
     if (candidate.size > MAX_BYTES) {
-      setError(`“${candidate.name}” is ${formatSize(candidate.size)} — the limit is 50 MB.`);
+      reportError("workflow.profile", new Error(`${candidate.name} is ${formatSize(candidate.size)}; limit is 50 MB`));
       return;
     }
-    setError(null);
-    onFile(candidate);
+        onFile(candidate);
   }
 
   return (
@@ -150,11 +150,6 @@ export default function SubscriberWorkflowProfile({ file, onFile, onContinue }: 
         )}
       </div>
 
-      {error && (
-        <p role="alert" className="mt-3 text-xs font-medium text-critical-text">
-          {error}
-        </p>
-      )}
 
       {profile && <ProfileResult profile={profile} />}
 

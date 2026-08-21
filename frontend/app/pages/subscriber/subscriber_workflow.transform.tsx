@@ -5,6 +5,7 @@ import { FileSpreadsheet, UploadCloud, X } from "lucide-react";
 import { ContinueButton, WorkflowHeader } from "@/app/components/workflow/WorkflowChrome";
 import { Code, Panel, Th } from "@/app/components/ui/Primitives";
 import { api, fileForm } from "@/app/lib/api";
+import { reportError } from "@/app/lib/errors";
 
 type TransformResponse = {
   summary: {
@@ -29,19 +30,17 @@ export default function SubscriberWorkflowTransform({ file, onContinue }: Props)
   const [mapping, setMapping] = useState<File | null>(null);
   const [result, setResult] = useState<TransformResponse | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function run(candidate: File) {
     if (!file) return;
     setMapping(candidate);
     setBusy(true);
-    setError(null);
-    setResult(null);
+        setResult(null);
     try {
       setResult(await api.upload<TransformResponse>("/transform", fileForm({ source: file, mapping: candidate })));
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Transform failed");
+    } catch (err: unknown) {
+      reportError("workflow.transform", err);
     } finally {
       setBusy(false);
     }
@@ -110,11 +109,6 @@ export default function SubscriberWorkflowTransform({ file, onContinue }: Props)
         </Panel>
       )}
 
-      {error && (
-        <p role="alert" className="mt-4 rounded-lg bg-critical-subtle px-4 py-3 text-xs font-medium text-critical-text">
-          {error}
-        </p>
-      )}
 
       {s && (
         <>
