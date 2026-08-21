@@ -12,7 +12,10 @@ import {
   type Severity,
 } from "@/app/data/subscriber/subscriber.dashboard_data";
 
-const DASHBOARD_ENDPOINT = "https://api.valigo.local/subscriber/dashboard";
+// TODO(backend): no such endpoint yet. The engine API is stateless - it keeps
+// no runs - so a dashboard needs persistence added server-side first. Until
+// then this 404s and, in dev only, seeded figures render in its place.
+const DASHBOARD_ENDPOINT = `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/subscriber/dashboard`;
 const IS_DEV = process.env.NODE_ENV !== "production";
 
 const SEV: Record<Severity, { bar: string; pill: string; text: string }> = {
@@ -26,7 +29,7 @@ const SEVERITIES = ["critical", "high", "medium", "low"] as const;
 
 type LoadState =
   | { status: "loading" }
-  | { status: "ready"; data: DashboardData; demo: boolean }
+  | { status: "ready"; data: DashboardData }
   | { status: "error"; message: string };
 
 export default function SubscriberDashboard() {
@@ -38,12 +41,13 @@ export default function SubscriberDashboard() {
       const res = await fetch(DASHBOARD_ENDPOINT, { signal });
       if (!res.ok) throw new Error(`Server responded ${res.status}`);
       const data = (await res.json()) as DashboardData;
-      setState({ status: "ready", data, demo: false });
+      setState({ status: "ready", data });
     } catch (err) {
       if (signal?.aborted) return;
-      // Backend not up yet. Dev: show dummy WITH a banner. Prod: honest error.
+      // No dashboard endpoint exists yet. Dev shows seeded figures so the
+      // screen is reachable; production still fails honestly.
       if (IS_DEV) {
-        setState({ status: "ready", data: DUMMY_DATA, demo: true });
+        setState({ status: "ready", data: DUMMY_DATA });
       } else {
         setState({ status: "error", message: err instanceof Error ? err.message : "Unknown error" });
       }
@@ -58,15 +62,15 @@ export default function SubscriberDashboard() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <h1 className="mb-6 text-3xl font-semibold">Dashboard</h1>
+      {/* <h1 className="mb-6 text-3xl font-semibold">Dashboard</h1> */}
       {state.status === "loading" && <SkeletonGrid />}
       {state.status === "error" && <ErrorCard message={state.message} onRetry={() => load()} />}
-      {state.status === "ready" && <DashboardBody data={state.data} demo={state.demo} onRetry={() => load()} />}
+      {state.status === "ready" && <DashboardBody data={state.data} />}
     </div>
   );
 }
 
-function DashboardBody({ data, demo, onRetry }: { data: DashboardData; demo: boolean; onRetry: () => void }) {
+function DashboardBody({ data }: { data: DashboardData }) {
   /** Which sparkle was clicked — a severity row, or the run as a whole.
    *  `null` = the AI Insights modal is closed. */
   const [scope, setScope] = useState<{ label: string; severity?: Severity } | null>(null);
@@ -83,8 +87,6 @@ function DashboardBody({ data, demo, onRetry }: { data: DashboardData; demo: boo
 
   return (
     <>
-      {/* {demo && <DemoBanner onRetry={onRetry} className="mb-5" />} */}
-
       {/* Consequence-first: the blocking hard-stops lead, above the reassuring score. */}
       {/* {crit > 0 && (
         // <div

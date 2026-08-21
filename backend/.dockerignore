@@ -4,3 +4,4 @@ _smoke.py
 _compare.py
 samples/
 .venv/
+.env.*

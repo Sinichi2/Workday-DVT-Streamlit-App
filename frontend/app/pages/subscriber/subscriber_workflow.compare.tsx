@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { Check, Save } from "lucide-react";
-import { DemoBanner } from "@/app/components/banner/DemoBanner";
 import {
   AiCard,
   ContinueButton,
@@ -17,7 +16,6 @@ import {
 
 // TODO(backend): step 1 should come from the auto-matcher and step 2 from a real
 // diff of the sampled record against the Workday target.
-const IS_DEV = process.env.NODE_ENV !== "production";
 
 type Props = { onComplete: () => void };
 
@@ -45,8 +43,6 @@ function MapColumns({ onNext }: { onNext: () => void }) {
   return (
     <div className="mx-auto w-full max-w-[845px] py-4 sm:py-6 lg:p-8">
       <WorkflowHeader crumb="Compare · Step 1 of 2" title="Map Source Columns to Target Fields" />
-
-      {IS_DEV && <DemoBanner className="mt-6" />}
 
       <div className="flex flex-wrap items-center gap-4 pt-8">
         <span className="inline-flex items-center gap-2 rounded-lg bg-success-subtle px-3 py-2 text-xs text-success-text">
@@ -142,8 +138,6 @@ function Comparison({ onComplete }: { onComplete: () => void }) {
   return (
     <div className="mx-auto w-full max-w-[845px] py-4 sm:py-6 lg:p-8">
       <WorkflowHeader crumb="Compare · Step 2 of 2" title="Source vs Target Comparison" />
-
-      {IS_DEV && <DemoBanner className="mt-6" />}
 
       <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Panel className="p-4">

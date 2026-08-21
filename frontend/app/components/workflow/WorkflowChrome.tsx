@@ -1,9 +1,6 @@
 import { ChevronRight, Sparkles, type LucideIcon } from "lucide-react";
 import { Button } from "@/app/components/button/Button";
 
-/** Breadcrumb + H1 + lede. Every workflow step opens with this block, so the
- *  page identity sits in exactly one place. `crumb` carries the optional
- *  "· Step 1 of 2" the Compare screens append to their trail. */
 export function WorkflowHeader({
   crumb,
   title,
@@ -26,9 +23,6 @@ export function WorkflowHeader({
   );
 }
 
-/** A count chip that doubles as a filter toggle. `tone` supplies the palette;
- *  `pressed` is the selected state (aria-pressed, so it reads to a screen
- *  reader as a toggle rather than a decorative badge). */
 export function FilterChip({
   tone,
   label,

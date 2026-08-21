@@ -2,7 +2,6 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { Download, X } from "lucide-react";
-import { DemoBanner } from "@/app/components/banner/DemoBanner";
 import { Panel } from "@/app/components/ui/Primitives";
 import {
   DATE_FORMATS,
@@ -21,7 +20,6 @@ import {
 
 // TODO(backend): every panel below reads and writes seeded state. Point these at
 // the account API; the demo banner comes off once they're real.
-const IS_DEV = process.env.NODE_ENV !== "production";
 
 export default function SubscriberSettings({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tab, setTab] = useState<SettingsTab>("Profile");
@@ -50,7 +48,7 @@ export default function SubscriberSettings({ open, onClose }: { open: boolean; o
       // Full-bleed on a phone (the pattern the report drawer already uses), a
       // centred 768px card from `sm` up. `open:flex` rather than a bare `flex`
       // so the utility cannot beat the UA's `dialog:not([open]){display:none}`.
-      className="open:flex h-dvh max-h-none w-full max-w-none flex-col overflow-hidden rounded-none border-0 bg-background p-0 text-foreground backdrop:bg-[rgb(10_11_15/0.6)] sm:m-auto sm:h-auto sm:max-h-[calc(100dvh-3rem)] sm:w-[768px] sm:max-w-[calc(100%-3rem)] sm:rounded-2xl sm:border sm:border-border-strong sm:shadow-2xl"
+      className="open:flex max-sm:h-dvh max-h-none w-full max-w-none flex-col overflow-hidden rounded-none border-0 bg-background p-0 text-foreground backdrop:bg-[rgb(10_11_15/0.6)] sm:m-auto sm:max-h-[calc(100dvh-3rem)] sm:w-[768px] sm:max-w-[calc(100%-3rem)] sm:rounded-2xl sm:border sm:border-border-strong sm:shadow-2xl"
     >
       <button
         onClick={onClose}
@@ -65,8 +63,6 @@ export default function SubscriberSettings({ open, onClose }: { open: boolean; o
         <p className="pt-0.5 text-xs text-muted-foreground-2">
           Manage your account, workspace, and notification preferences.
         </p>
-
-        {IS_DEV && <DemoBanner className="mt-6" />}
 
         <div role="tablist" aria-label="Settings sections" className="mt-7 grid grid-cols-2 gap-1 rounded-xl border border-border bg-surface p-1 sm:grid-cols-4">
           {SETTINGS_TABS.map((t) => (

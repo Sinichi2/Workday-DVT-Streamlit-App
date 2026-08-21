@@ -53,7 +53,7 @@ type Props = {
  *  the breakpoint is expressed in CSS, so there's no viewport measuring in JS
  *  and no second copy of the nav in the DOM. */
 function shellClass(open: boolean) {
-  return `fixed inset-y-0 left-0 z-40 flex shrink-0 flex-col border-r border-border bg-surface-muted transition-transform duration-200 lg:static lg:translate-x-0 ${
+  return `fixed inset-y-0 left-0 z-40 flex shrink-0 flex-col overflow-y-auto border-r border-border bg-surface-muted transition-transform duration-200 lg:static lg:translate-x-0 ${
     // `invisible` (not just translated off-screen) so a closed drawer is out of
     // the tab order — otherwise keyboard focus walks into nav you cannot see.
     open ? "translate-x-0" : "invisible -translate-x-full lg:visible"
@@ -107,7 +107,7 @@ export function Sidebar({ collapsed, onToggle, active = "Dashboard", onNavigate,
           </div>
           <div className="flex flex-col items-center gap-0.5 pb-3">
             <RailButton icon={Settings} label="Settings" active={active === "Settings"} onClick={() => onNavigate?.("Settings")} />
-            <RailButton icon={HelpIcon} label="Help Center" />
+            <RailButton icon={HelpIcon} label="Help Center" active={active === "Help Center"} onClick={() => onNavigate?.("Help Center")} />
           </div>
         </aside>
       </>
@@ -151,7 +151,7 @@ export function Sidebar({ collapsed, onToggle, active = "Dashboard", onNavigate,
       {/* The nav takes the leftover height and scrolls within itself, so the
           footer below stays pinned to the bottom of the VIEWPORT — on a short
           screen you never scroll the page to reach Settings. */}
-      <nav className="mt-4 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
+      <nav className="mt-4 flex flex-col gap-0.5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
         <NavItem icon={DashboardIcon} label="Dashboard" active={active === "Dashboard"} onClick={() => onNavigate?.("Dashboard")} />
 
         <button
@@ -206,9 +206,9 @@ export function Sidebar({ collapsed, onToggle, active = "Dashboard", onNavigate,
       </nav>
 
       {/* Footer */}
-      <div className="flex flex-col gap-0.5 pt-2">
+      <div className="flex flex-col gap-0.5 pb-2 pt-2">
         <NavItem icon={Settings} label="Settings" active={active === "Settings"} onClick={() => onNavigate?.("Settings")} />
-        <NavItem icon={HelpIcon} label="Help Center" />
+        <NavItem icon={HelpIcon} label="Help Center" active={active === "Help Center"} onClick={() => onNavigate?.("Help Center")} />
       </div>
       </aside>
     </>

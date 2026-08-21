@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Play, Search, X } from "lucide-react";
-import { DemoBanner } from "@/app/components/banner/DemoBanner";
 import {
   AiCard,
   ContinueButton,
@@ -10,13 +9,11 @@ import {
   WorkflowHeader,
 } from "@/app/components/workflow/WorkflowChrome";
 import { Code, Panel, Th } from "@/app/components/ui/Primitives";
-import { DUMMY_RUN, type ValidationRun } from "@/app/data/subscriber/subscriber.workflow_data";
+import type { Finding, ValidationRun } from "@/app/data/subscriber/subscriber.workflow_data";
+import SubscriberFixManually from "@/app/pages/subscriber/subscriber_fixManually";
 import type { Severity } from "@/app/data/subscriber/subscriber.dashboard_data";
-
-// TODO(backend): POST the mapped file to the validation service and stream real
-// progress. The interval below is a stand-in so the running state is reachable.
-const IS_DEV = process.env.NODE_ENV !== "production";
-const FAKE_RUN_MS = 2400;
+import { fileForm, post } from "@/app/lib/api";
+import { toRun, type ValidateResponse } from "@/app/lib/findings";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
 
@@ -28,30 +25,53 @@ const SEV: Record<Severity, { label: string; chip: string; pill: string; num: st
 };
 
 type Phase = "idle" | "running" | "done";
-type Props = { onContinue: () => void; onComplete: () => void };
+type Props = { file: File | null; onContinue: () => void; onComplete: () => void };
 
-export default function SubscriberWorkflowValidate({ onContinue, onComplete }: Props) {
+export default function SubscriberWorkflowValidate({ file, onContinue, onComplete }: Props) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [confirming, setConfirming] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const run = DUMMY_RUN;
+  const [result, setResult] = useState<ValidationRun | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [fixing, setFixing] = useState(false);
 
-  // Drive the progress bar, then hand off to the results view. Cleared on
-  // unmount so navigating away mid-run can't finish a run that isn't showing.
+  // The engine takes no rules file - it falls back to the bundled Workday HCM
+  // rule set, so the CSV picked at Profile is the entire request. Aborted on
+  // unmount so navigating away mid-run cannot land a result that isn't showing.
   useEffect(() => {
-    if (phase !== "running") return;
-    const started = Date.now();
-    const id = setInterval(() => {
-      const pct = Math.min(1, (Date.now() - started) / FAKE_RUN_MS);
-      setProgress(pct);
-      if (pct === 1) {
-        clearInterval(id);
+    if (phase !== "running" || !file) return;
+    const ctrl = new AbortController();
+    post<ValidateResponse>("/validate", fileForm({ dataset: file }), ctrl.signal)
+      .then((res) => {
+        setResult(toRun(res));
+        setError(null);
         setPhase("done");
         onComplete();
-      }
-    }, 60);
-    return () => clearInterval(id);
-  }, [phase, onComplete]);
+      })
+      .catch((e: unknown) => {
+        if (ctrl.signal.aborted) return;
+        setError(e instanceof Error ? e.message : "Validation failed");
+        setPhase("idle");
+      });
+    return () => ctrl.abort();
+  }, [phase, file, onComplete]);
+
+  // Manual remediation takes over the step: one decision per screen, and the
+  // table needs the full width the results view was using.
+  if (fixing && result) {
+    return (
+      <SubscriberFixManually
+        findings={result.findings}
+        onCancel={() => setFixing(false)}
+        onSave={(edits) => {
+          // TODO(supabase): persist the corrected cells, then re-run validation
+          // so the score reflects them. Nothing is stored yet, so edits live
+          // only as long as this result does - say so rather than implying a save.
+          console.warn(`${edits.length} edit(s) not persisted - no storage wired yet`);
+          setFixing(false);
+        }}
+      />
+    );
+  }
 
   return (
     <div className="mx-auto w-full max-w-[1024px] py-4 sm:py-6 lg:p-8">
@@ -61,17 +81,33 @@ export default function SubscriberWorkflowValidate({ onContinue, onComplete }: P
         subtitle="Execute validation rules against your mapped data and review results."
       />
 
-      {phase === "idle" && <IdleCard run={run} onRun={() => setConfirming(true)} />}
-      {phase === "running" && <RunningCard run={run} progress={progress} />}
-      {phase === "done" && <Results run={run} onContinue={onContinue} onRerun={() => setConfirming(true)} />}
+      {error && (
+        <p
+          role="alert"
+          className="mt-6 rounded-lg border border-critical-subtle bg-critical-subtle px-4 py-3 text-xs font-medium text-critical-text"
+        >
+          {error}
+        </p>
+      )}
+
+      {phase === "idle" && <IdleCard file={file} onRun={() => setConfirming(true)} />}
+      {phase === "running" && <RunningCard />}
+      {phase === "done" && result && (
+        <Results
+          run={result}
+          onContinue={onContinue}
+          onRerun={() => setConfirming(true)}
+          onFixManually={() => setFixing(true)}
+        />
+      )}
 
       {confirming && (
         <ConfirmDialog
-          run={run}
+          file={file}
           onCancel={() => setConfirming(false)}
           onConfirm={() => {
             setConfirming(false);
-            setProgress(0);
+            setError(null);
             setPhase("running");
           }}
         />
@@ -80,21 +116,27 @@ export default function SubscriberWorkflowValidate({ onContinue, onComplete }: P
   );
 }
 
-function IdleCard({ run, onRun }: { run: ValidationRun; onRun: () => void }) {
+function IdleCard({ file, onRun }: { file: File | null; onRun: () => void }) {
+  const disabled = !file;
   return (
     <Panel className="mt-8 flex flex-col items-center p-8 text-center">
       <span className="flex size-12 items-center justify-center rounded-full bg-accent-subtle">
         <Play size={20} className="text-accent-strong" aria-hidden />
       </span>
       <p className="pt-4 text-sm font-semibold">Ready to validate</p>
-      <p className="max-w-[320px] pt-1.5 text-xs text-muted-foreground">
-        Valigo will check all {run.fields} mapped fields across {run.records.toLocaleString()} records against Workday
-        validation rules.
+      {/* Record and rule counts are only known once the engine answers, so this
+          card describes what will happen rather than quoting numbers it has
+          not measured. */}
+      <p className="max-w-[340px] pt-1.5 text-xs text-muted-foreground">
+        {file
+          ? `Valigo will check ${file.name} against the Workday HCM rule set.`
+          : "Upload a CSV on the Profile step to enable validation."}
       </p>
-      <RunStats run={run} className="pt-5 text-lg" />
       <button
         onClick={onRun}
-        className="mt-6 inline-flex items-center gap-2 rounded-lg bg-accent px-6 py-2.5 text-sm font-medium text-accent-foreground hover:bg-accent-hover"
+        disabled={disabled}
+        title={disabled ? "Upload a CSV on the Profile step first" : undefined}
+        className="mt-6 inline-flex items-center gap-2 rounded-lg bg-accent px-6 py-2.5 text-sm font-medium text-accent-foreground hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-muted-foreground-2"
       >
         <Play size={14} aria-hidden /> Run Validation
       </button>
@@ -102,30 +144,36 @@ function IdleCard({ run, onRun }: { run: ValidationRun; onRun: () => void }) {
   );
 }
 
-function RunningCard({ run, progress }: { run: ValidationRun; progress: number }) {
-  const done = Math.round(run.records * progress);
-  const pct = Math.round(progress * 100);
+function RunningCard() {
   return (
     <Panel className="mt-8 p-8 text-center">
       <p className="text-sm font-semibold">Validating records…</p>
+      {/* The engine answers in one shot - there are no progress events to
+          report, so the bar is indeterminate rather than a stopwatch
+          pretending to measure something. */}
       <div
         role="progressbar"
-        aria-valuenow={pct}
-        aria-valuemin={0}
-        aria-valuemax={100}
         aria-label="Validation progress"
         className="mx-auto mt-4 h-1.5 w-full max-w-[384px] overflow-hidden rounded-full bg-surface-muted"
       >
-        <div className="h-full rounded-full bg-accent transition-[width] duration-100" style={{ width: `${pct}%` }} />
+        <div className="h-full w-1/3 animate-pulse rounded-full bg-accent" />
       </div>
-      <p className="pt-3 text-xs text-muted-foreground-2">
-        {done.toLocaleString()} / {run.records.toLocaleString()} · {pct}%
-      </p>
+      <p className="pt-3 text-xs text-muted-foreground-2">Running the Workday HCM rule set on the server…</p>
     </Panel>
   );
 }
 
-function Results({ run, onContinue, onRerun }: { run: ValidationRun; onContinue: () => void; onRerun: () => void }) {
+function Results({
+  run,
+  onContinue,
+  onRerun,
+  onFixManually,
+}: {
+  run: ValidationRun;
+  onContinue: () => void;
+  onRerun: () => void;
+  onFixManually: () => void;
+}) {
   const [severity, setSeverity] = useState<Severity | null>(null);
   const [query, setQuery] = useState("");
 
@@ -140,8 +188,6 @@ function Results({ run, onContinue, onRerun }: { run: ValidationRun; onContinue:
 
   return (
     <>
-      {IS_DEV && <DemoBanner className="mt-6" onRetry={onRerun} />}
-
       <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <Panel className="p-4">
           <p className="text-xs text-muted-foreground-2">Quality Score</p>
@@ -159,7 +205,13 @@ function Results({ run, onContinue, onRerun }: { run: ValidationRun; onContinue:
       </div>
 
       <div className="pt-5">
-        <AiCard label="AI Summary" body={run.aiSummary} autoFixCount={run.autoFixable} manualCount={run.manualFixes} />
+        <AiCard
+          label="AI Summary"
+          body={run.aiSummary}
+          autoFixCount={run.autoFixable}
+          manualCount={run.manualFixes}
+          onManualFix={onFixManually}
+        />
       </div>
 
       <div className="flex flex-wrap items-center gap-3 pt-5">
@@ -248,30 +300,13 @@ function Results({ run, onContinue, onRerun }: { run: ValidationRun; onContinue:
 }
 
 /** Shared 3-up Records / Fields / Rules figure strip. */
-function RunStats({ run, className = "" }: { run: ValidationRun; className?: string }) {
-  const items: [string, string][] = [
-    [run.records.toLocaleString(), "Records"],
-    [String(run.fields), "Fields"],
-    [String(run.rules), "Rules"],
-  ];
-  return (
-    <div className={`flex justify-center gap-4 ${className}`}>
-      {items.map(([value, label]) => (
-        <div key={label} className="text-center">
-          <div className="font-semibold">{value}</div>
-          <div className="text-xs font-normal text-muted-foreground">{label}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 function ConfirmDialog({
-  run,
+  file,
   onCancel,
   onConfirm,
 }: {
-  run: ValidationRun;
+  file: File | null;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -302,12 +337,10 @@ function ConfirmDialog({
         </div>
 
         <div className="px-6 py-5">
-          <div className="border-b border-border-strong pb-4">
-            <RunStats run={run} className="text-base" />
-          </div>
-          <p className="pt-4 text-xs leading-[19.5px] text-muted-foreground">
-            Valigo will run all {run.rules} validation rules against your mapped data. This usually takes under 30
-            seconds and cannot be cancelled once started.
+          <p className="text-xs leading-[19.5px] text-muted-foreground">
+            Valigo will run the Workday HCM rule set against{" "}
+            <span className="font-medium text-foreground">{file?.name ?? "your file"}</span>. This usually takes under
+            30 seconds and cannot be cancelled once started.
           </p>
           <p className="mt-3 rounded-lg border border-medium/40 bg-medium-subtle px-3 py-2.5 text-xs leading-[19.5px] text-medium-text">
             ⚠ Running a new validation will replace your current results for this file.

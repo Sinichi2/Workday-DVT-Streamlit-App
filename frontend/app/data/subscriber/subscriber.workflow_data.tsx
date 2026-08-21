@@ -91,32 +91,6 @@ export type ValidationRun = {
   findings: Finding[];
 };
 
-export const DUMMY_RUN: ValidationRun = {
-  records: 4218,
-  fields: 14,
-  rules: 28,
-  qualityScore: "97.3%",
-  passed: 4142,
-  counts: { critical: 3, high: 3, medium: 4, low: 2 },
-  aiSummary:
-    "3 critical errors require manual resolution — missing manager assignments block the org hierarchy. 7 high/medium issues are auto-fixable with TRIM and lookup transforms. 2 low-severity email issues are safe to auto-clean. Estimated fix time is 12 min.",
-  autoFixable: 8,
-  manualFixes: 3,
-  findings: [
-    { row: 103, field: "Manager_ID", value: null, issue: "Manager ID is required for all workers", severity: "critical", fix: "Assign manager 10001 (Sarah Johnson, HR Director)" },
-    { row: 218, field: "Manager_ID", value: null, issue: "Manager ID is required for all workers", severity: "critical", fix: "Review org structure — may be top-level position" },
-    { row: 447, field: "Manager_ID", value: "MGR_99", issue: "Manager ID does not exist in target system", severity: "critical", fix: "Map MGR_99 → Employee_ID 10412" },
-    { row: 56, field: "Pay_Group", value: "BW-US", issue: "Pay group value not in Workday reference table", severity: "high", fix: 'Standardize to "Bi-Weekly US"' },
-    { row: 89, field: "Pay_Group", value: "BW-US", issue: "Pay group value not in Workday reference table", severity: "high", fix: 'Standardize to "Bi-Weekly US"' },
-    { row: 342, field: "Cost_Center", value: "CC-HQ-100", issue: "Cost center code format mismatch", severity: "high", fix: 'Remove prefix "CC-" — Workday expects "HQ-100"' },
-    { row: 12, field: "Postal_Code", value: "10001", issue: "Leading whitespace detected", severity: "medium", fix: "Apply TRIM() — auto-clean available" },
-    { row: 34, field: "Postal_Code", value: "90210", issue: "Trailing whitespace detected", severity: "medium", fix: "Apply TRIM()" },
-    { row: 78, field: "Hire_Date", value: "2020/03/15", issue: "Date format should be MM/DD/YYYY", severity: "medium", fix: "Reformat to 03/15/2020" },
-    { row: 156, field: "Annual_Salary", value: "$85,000", issue: "Currency symbol present — numeric value expected", severity: "medium", fix: 'Remove "$" and commas — use 85000' },
-    { row: 203, field: "Work_Email", value: "John.Doe@Company.C", issue: "Email not lowercase", severity: "low", fix: "Apply LOWER()" },
-    { row: 301, field: "Legal_First_Name", value: "James ", issue: "Leading whitespace detected", severity: "low", fix: "Apply TRIM()" },
-  ],
-};
 
 // Compare
 

@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { ChevronRight, Download, FileText, Pencil, Sparkles, Wand2, X } from "lucide-react";
-import { DemoBanner } from "@/app/components/banner/DemoBanner";
 import { Code, Delta, Panel, Th } from "@/app/components/ui/Primitives";
 import {
   DUMMY_REPORTS,
@@ -18,7 +17,6 @@ import type { Severity } from "@/app/data/subscriber/subscriber.dashboard_data";
 
 // TODO(backend): list, detail and insights should all come from the reports API.
 // Until then these are seeded runs, flagged by the demo banner.
-const IS_DEV = process.env.NODE_ENV !== "production";
 
 /** Severity → token classes. Literal strings so Tailwind can see every class. */
 const SEV: Record<Severity, { label: string; tile: string; text: string; fill: string }> = {
@@ -48,14 +46,12 @@ export default function SubscriberReports() {
 
   return (
     <div className="mx-auto w-full max-w-[845px] py-4 sm:py-6 lg:p-8">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <h1 className="text-[22px] font-semibold leading-[33px]">Reports</h1>
         <button className="rounded-lg border border-border-strong px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-surface-muted">
           Export All
         </button>
       </div>
-
-      {IS_DEV && <DemoBanner className="mt-6" />}
 
       {/* Rolling summary across every run in the table below. */}
       <Panel className="mt-8 flex flex-wrap items-center justify-between gap-6 p-5">

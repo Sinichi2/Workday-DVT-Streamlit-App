@@ -10,9 +10,10 @@ import SubscriberWorkflowValidate from "@/app/pages/subscriber/subscriber_workfl
 import SubscriberWorkflowCompare from "@/app/pages/subscriber/subscriber_workflow.compare";
 import SubscriberReports from "@/app/pages/subscriber/subscriber_reports";
 import SubscriberSettings from "@/app/pages/subscriber/subscriber_settings";
+import SubscriberHelpCenter from "@/app/pages/subscriber/subscriber_helpCenter";
 import { STEP_LABEL, WORKFLOW_ORDER, type Step } from "@/app/data/subscriber/subscriber.workflow_data";
 
-type Route = "Dashboard" | "Profile" | "Transform" | "Validate" | "Compare" | "Reports";
+type Route = "Dashboard" | "Profile" | "Transform" | "Validate" | "Compare" | "Reports" | "Help Center";
 
 /** App shell: owns theme, sidebar-collapse, the current route, and the workflow
  *  progress the four steps share. Swap the route state for the router when
@@ -91,12 +92,14 @@ export default function Main() {
           {route === "Transform" && <SubscriberWorkflowTransform onContinue={() => advance("transform")} />}
           {route === "Validate" && (
             <SubscriberWorkflowValidate
+              file={file}
               onContinue={() => advance("validate")}
               onComplete={() => complete("validate")}
             />
           )}
           {route === "Compare" && <SubscriberWorkflowCompare onComplete={() => complete("compare")} />}
           {route === "Reports" && <SubscriberReports />}
+          {route === "Help Center" && <SubscriberHelpCenter />}
         </main>
       </div>
       <SubscriberSettings open={settingsOpen} onClose={() => setSettingsOpen(false)} />

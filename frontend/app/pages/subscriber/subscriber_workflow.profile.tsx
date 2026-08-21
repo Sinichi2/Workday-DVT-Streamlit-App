@@ -1,8 +1,28 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FileText, UploadCloud, X } from "lucide-react";
 import { ContinueButton, WorkflowHeader } from "@/app/components/workflow/WorkflowChrome";
+import { Panel } from "@/app/components/ui/Primitives";
+import { fileForm, post } from "@/app/lib/api";
+
+type ProfileResponse = {
+  overview: {
+    total_rows: number;
+    total_columns: number;
+    blank_cells: number;
+    overall_missing_pct: number;
+    duplicate_rows: number;
+  };
+  issues: { Column: string; Severity: string; Issue: string; Detail: string }[];
+};
+
+/** The engine grades issues High/Medium/Low; reuse the severity tokens. */
+const ISSUE_TONE: Record<string, string> = {
+  High: "bg-high-subtle text-high-text",
+  Medium: "bg-medium-subtle text-medium-text",
+  Low: "bg-low-subtle text-low-text",
+};
 
 // The design states ".csv only · Max 50 MB" — enforce both here rather than
 // letting a 2 GB XLSX reach the parser and fail somewhere less legible.
@@ -13,7 +33,35 @@ type Props = { file: File | null; onFile: (file: File | null) => void; onContinu
 export default function SubscriberWorkflowProfile({ file, onFile, onContinue }: Props) {
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [profile, setProfile] = useState<ProfileResponse | null>(null);
+  const [profiling, setProfiling] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Profiling is the whole point of this step, so it runs on selection rather
+  // than behind another button. Aborts if the file changes mid-flight, so a
+  // slow response for an old file can't overwrite a newer one.
+  useEffect(() => {
+    if (!file) {
+      setProfile(null);
+      return;
+    }
+    const ctrl = new AbortController();
+    setProfiling(true);
+    post<ProfileResponse>("/profile", fileForm({ file }), ctrl.signal)
+      .then((res) => {
+        setProfile(res);
+        setError(null);
+      })
+      .catch((e: unknown) => {
+        if (ctrl.signal.aborted) return;
+        setProfile(null);
+        setError(e instanceof Error ? e.message : "Could not profile this file");
+      })
+      .finally(() => {
+        if (!ctrl.signal.aborted) setProfiling(false);
+      });
+    return () => ctrl.abort();
+  }, [file]);
 
   function accept(candidate: File | undefined) {
     if (!candidate) return;
@@ -65,7 +113,9 @@ export default function SubscriberWorkflowProfile({ file, onFile, onContinue }: 
             </span>
             <div className="text-center">
               <p className="text-sm font-medium">{file.name}</p>
-              <p className="pt-1 text-xs text-muted-foreground-2">{formatSize(file.size)} · ready to profile</p>
+              <p className="pt-1 text-xs text-muted-foreground-2">
+                {formatSize(file.size)} · {profiling ? "profiling…" : profile ? "profiled" : "ready to profile"}
+              </p>
             </div>
             <button
               onClick={() => {
@@ -106,6 +156,8 @@ export default function SubscriberWorkflowProfile({ file, onFile, onContinue }: 
         </p>
       )}
 
+      {profile && <ProfileResult profile={profile} />}
+
       <div className="flex justify-end pt-6">
         <ContinueButton
           label="Continue to Transform"
@@ -115,6 +167,58 @@ export default function SubscriberWorkflowProfile({ file, onFile, onContinue }: 
         />
       </div>
     </div>
+  );
+}
+
+/** Real numbers from the engine. Every figure here is measured, not seeded —
+ *  this is the one screen in the app currently reading live data. */
+function ProfileResult({ profile }: { profile: ProfileResponse }) {
+  const { overview, issues } = profile;
+  const stats: [string, string][] = [
+    [overview.total_rows.toLocaleString(), "Rows"],
+    [String(overview.total_columns), "Columns"],
+    [`${overview.overall_missing_pct}%`, "Blank cells"],
+    [overview.duplicate_rows.toLocaleString(), "Duplicate rows"],
+  ];
+
+  return (
+    <Panel className="mt-6 p-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {stats.map(([value, label]) => (
+          <div key={label}>
+            <div className="text-2xl font-semibold leading-8">{value}</div>
+            <div className="text-xs text-muted-foreground-2">{label}</div>
+          </div>
+        ))}
+      </div>
+
+      {issues.length > 0 && (
+        <div className="mt-5 border-t border-border pt-4">
+          <p className="text-[10px] uppercase tracking-[0.25px] text-muted-foreground-2">
+            {issues.length} issue{issues.length === 1 ? "" : "s"} flagged
+          </p>
+          <ul className="mt-2 flex flex-col gap-2">
+            {issues.map((iss, i) => (
+              <li key={`${iss.Column}-${iss.Issue}-${i}`} className="flex items-start gap-3">
+                <span
+                  className={`mt-0.5 shrink-0 rounded px-2 py-0.5 text-[11px] font-medium ${
+                    ISSUE_TONE[iss.Severity] ?? "bg-low-subtle text-low-text"
+                  }`}
+                >
+                  {iss.Severity}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-medium">
+                    {iss.Column} — {iss.Issue}
+                  </p>
+                  <p className="text-xs text-muted-foreground-2">{iss.Detail}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </Panel>
   );
 }
 

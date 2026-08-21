@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
-import { DemoBanner } from "@/app/components/banner/DemoBanner";
 import {
   ContinueButton,
   FilterChip,
@@ -19,7 +18,6 @@ import {
 
 // TODO(backend): mappings should arrive from the profiling run for the uploaded
 // file. Until then these are seeded rows, flagged by the demo banner.
-const IS_DEV = process.env.NODE_ENV !== "production";
 
 const ORDER: MappingStatus[] = ["mapped", "review", "warning", "unmapped"];
 
@@ -59,8 +57,6 @@ export default function SubscriberWorkflowTransform({ onContinue }: Props) {
         title="Field Mapping & Transform"
         subtitle="Each row reads left to right: source field → how it transforms → where it lands in Workday."
       />
-
-      {IS_DEV && <DemoBanner className="mt-6" />}
 
       {/* Filters. Selecting one narrows the table; "Clear" only appears while a
           filter is active, so the unfiltered view stays quiet. */}
