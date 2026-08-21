@@ -11,17 +11,38 @@ import SubscriberWorkflowCompare from "@/app/pages/subscriber/subscriber_workflo
 import SubscriberReports from "@/app/pages/subscriber/subscriber_reports";
 import SubscriberSettings from "@/app/pages/subscriber/subscriber_settings";
 import SubscriberHelpCenter from "@/app/pages/subscriber/subscriber_helpCenter";
+import AdminDashboard from "@/app/pages/admin/admin.dashboard";
+import AdminReports from "@/app/pages/admin/admin.reports";
+import AdminSupport from "@/app/pages/admin/admin.support";
+import AdminUsers from "@/app/pages/admin/admin.users";
+import AuthSignIn, { type AuthView } from "@/app/pages/general/authentication/auth.signIn";
+import AuthSignUp from "@/app/pages/general/authentication/auth.signUp";
+import AuthResetPassword from "@/app/pages/general/authentication/auth.resetPassword";
+import { useSession } from "@/app/lib/session";
 import { STEP_LABEL, WORKFLOW_ORDER, type Step } from "@/app/data/subscriber/subscriber.workflow_data";
 
-type Route = "Dashboard" | "Profile" | "Transform" | "Validate" | "Compare" | "Reports" | "Help Center";
+type Route =
+  | "Dashboard"
+  | "Profile"
+  | "Transform"
+  | "Validate"
+  | "Compare"
+  | "Reports"
+  | "Help Center"
+  | "Admin"
+  | "Users"
+  | "All Reports"
+  | "Support";
 
 /** App shell: owns theme, sidebar-collapse, the current route, and the workflow
  *  progress the four steps share. Swap the route state for the router when
  *  these become real URLs. */
 export default function Main() {
+  const { status, isAdmin } = useSession();
   const [collapsed, setCollapsed] = useState(false);
   const [dark, setDark] = useState(false);
   const [route, setRoute] = useState<Route>("Dashboard");
+  const [authView, setAuthView] = useState<AuthView>("signIn");
   /** Sidebar drawer, below `lg` only. */
   const [navOpen, setNavOpen] = useState(false);
   /** Settings floats over whatever page you were on — it isn't a route. */
@@ -34,6 +55,12 @@ export default function Main() {
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
   }, [dark]);
+
+  // "Dashboard" is the subscriber landing page and isn't in the admin nav, so
+  // an admin would otherwise open on a screen their sidebar can't navigate back to.
+  useEffect(() => {
+    if (isAdmin) setRoute((r) => (r === "Dashboard" ? "Admin" : r));
+  }, [isAdmin]);
 
   // Esc closes the drawer — parity with the backdrop, which the keyboard can't
   // click.
@@ -65,9 +92,28 @@ export default function Main() {
     if (!next) setCompleted([]);
   }, []);
 
+  // Theme is applied before this branch so the auth screens are themed too.
+  if (status === "loading") {
+    return (
+      <div className="flex min-h-dvh flex-1 items-center justify-center bg-background text-sm text-muted-foreground-2">
+        Loading…
+      </div>
+    );
+  }
+
+  if (status === "signed-out") {
+    if (authView === "signUp") return <AuthSignUp onNavigate={setAuthView} />;
+    if (authView === "reset") return <AuthResetPassword onNavigate={setAuthView} />;
+    return <AuthSignIn onNavigate={setAuthView} />;
+  }
+
+  // Admins get the same shell with a different nav. One layout, one login.
+  const adminRoute = route === "Admin" || route === "Users" || route === "All Reports" || route === "Support";
+
   return (
     <div className="flex min-h-0 flex-1 bg-background text-foreground">
       <Sidebar
+        admin={isAdmin}
         collapsed={collapsed}
         onToggle={() => setCollapsed((c) => !c)}
         active={settingsOpen ? "Settings" : route}
@@ -89,7 +135,7 @@ export default function Main() {
           {route === "Profile" && (
             <SubscriberWorkflowProfile file={file} onFile={chooseFile} onContinue={() => advance("profile")} />
           )}
-          {route === "Transform" && <SubscriberWorkflowTransform onContinue={() => advance("transform")} />}
+          {route === "Transform" && <SubscriberWorkflowTransform file={file} onContinue={() => advance("transform")} />}
           {route === "Validate" && (
             <SubscriberWorkflowValidate
               file={file}
@@ -97,9 +143,19 @@ export default function Main() {
               onComplete={() => complete("validate")}
             />
           )}
-          {route === "Compare" && <SubscriberWorkflowCompare onComplete={() => complete("compare")} />}
+          {route === "Compare" && <SubscriberWorkflowCompare file={file} onComplete={() => complete("compare")} />}
           {route === "Reports" && <SubscriberReports />}
           {route === "Help Center" && <SubscriberHelpCenter />}
+
+          {isAdmin && route === "Admin" && <AdminDashboard />}
+          {isAdmin && route === "Users" && <AdminUsers />}
+          {isAdmin && route === "All Reports" && <AdminReports />}
+          {isAdmin && route === "Support" && <AdminSupport />}
+          {/* An admin route reached by a non-admin renders nothing rather than
+              leaking the page shell; RLS would refuse the data anyway. */}
+          {!isAdmin && adminRoute && (
+            <p className="pt-10 text-center text-sm text-muted-foreground-2">Not available for this account.</p>
+          )}
         </main>
       </div>
       <SubscriberSettings open={settingsOpen} onClose={() => setSettingsOpen(false)} />

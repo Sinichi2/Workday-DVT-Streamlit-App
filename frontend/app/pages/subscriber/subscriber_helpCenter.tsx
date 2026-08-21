@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   ChevronDown,
@@ -16,10 +16,13 @@ import {
 import { Panel } from "@/app/components/ui/Primitives";
 import TemplateCustomerSupport from "@/app/pages/subscriber/template/template.customer_support";
 import TemplateDocumentation from "@/app/pages/subscriber/template/template.documentation";
+import { supabase } from "@/app/lib/supabase";
 import {
-  ARTICLES,
-  FAQS,
+  ARTICLES as SEED_ARTICLES,
+  FAQS as SEED_FAQS,
   HELP_TOPICS,
+  type Article,
+  type Faq,
   type HelpTopic,
 } from "@/app/data/subscriber/subscriber.helpCenter_data";
 
@@ -36,6 +39,27 @@ export default function SubscriberHelpCenter() {
   const [query, setQuery] = useState("");
   const [openSlug, setOpenSlug] = useState<string | null>(null);
   const [supportOpen, setSupportOpen] = useState(false);
+  // Admin-published content. The seed module is the fallback, not the source:
+  // an unreachable database should degrade to slightly stale help, never to an
+  // empty Help Center.
+  const [ARTICLES, setArticles] = useState<Article[]>(SEED_ARTICLES);
+  const [FAQS, setFaqs] = useState<Faq[]>(SEED_FAQS);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [a, f] = await Promise.all([
+        supabase.from("help_articles").select("*").eq("published", true).order("position"),
+        supabase.from("help_faqs").select("*").eq("published", true).order("position"),
+      ]);
+      if (cancelled) return;
+      if (!a.error && a.data?.length) setArticles(a.data as Article[]);
+      if (!f.error && f.data?.length) setFaqs(f.data as Faq[]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const q = query.trim().toLowerCase();
   const articles = useMemo(
@@ -45,11 +69,11 @@ export default function SubscriberHelpCenter() {
         : ARTICLES.filter(
             (a) => a.title.toLowerCase().includes(q) || a.blurb.toLowerCase().includes(q) || a.category.toLowerCase().includes(q),
           ),
-    [q],
+    [q, ARTICLES],
   );
   const faqs = useMemo(
     () => (!q ? FAQS : FAQS.filter((f) => f.question.toLowerCase().includes(q) || f.answer.toLowerCase().includes(q))),
-    [q],
+    [q, FAQS],
   );
 
   const openIndex = ARTICLES.findIndex((a) => a.slug === openSlug);
@@ -90,7 +114,7 @@ export default function SubscriberHelpCenter() {
           disappear during a search rather than competing with the results. */}
       {!q && (
         <div className="grid grid-cols-1 gap-3 pt-8 sm:grid-cols-2 lg:grid-cols-3">
-          {HELP_TOPICS.map((topic) => {
+          {HELP_TOPICS.filter((t) => ARTICLES.some((a) => a.slug === t.slug)).map((topic) => {
             const Icon = TOPIC_ICON[topic.icon];
             return (
               <button

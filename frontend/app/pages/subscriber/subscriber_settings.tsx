@@ -48,7 +48,7 @@ export default function SubscriberSettings({ open, onClose }: { open: boolean; o
       // Full-bleed on a phone (the pattern the report drawer already uses), a
       // centred 768px card from `sm` up. `open:flex` rather than a bare `flex`
       // so the utility cannot beat the UA's `dialog:not([open]){display:none}`.
-      className="open:flex max-sm:h-dvh max-h-none w-full max-w-none flex-col overflow-hidden rounded-none border-0 bg-background p-0 text-foreground backdrop:bg-[rgb(10_11_15/0.6)] sm:m-auto sm:max-h-[calc(100dvh-3rem)] sm:w-[768px] sm:max-w-[calc(100%-3rem)] sm:rounded-2xl sm:border sm:border-border-strong sm:shadow-2xl"
+      className="open:flex max-sm:h-full max-h-none w-full max-w-none flex-col overflow-hidden rounded-none border-0 bg-background p-0 text-foreground backdrop:bg-[rgb(10_11_15/0.6)] sm:m-auto sm:max-h-[calc(100dvh-3rem)] sm:w-[768px] sm:max-w-[calc(100%-3rem)] sm:rounded-2xl sm:border sm:border-border-strong sm:shadow-2xl"
     >
       <button
         onClick={onClose}

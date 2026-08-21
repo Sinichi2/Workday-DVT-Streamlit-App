@@ -109,7 +109,7 @@ function DashboardBody({ data }: { data: DashboardData }) {
         // </div>
       )} */}
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+      <div className="animate-rise grid grid-cols-1 gap-5 lg:grid-cols-2">
         {/* Data Quality Score */}
         <Panel className="p-5">
           <div className="flex items-start justify-between gap-2">

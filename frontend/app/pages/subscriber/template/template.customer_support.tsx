@@ -3,10 +3,11 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Check, UploadCloud, X } from "lucide-react";
 import {
-  SUPPORT_CONTEXT,
   SUPPORT_PRIORITIES,
   type SupportPriority,
 } from "@/app/data/subscriber/subscriber.helpCenter_data";
+import { useSession } from "@/app/lib/session";
+import { supabase } from "@/app/lib/supabase";
 
 type Props = { open: boolean; onClose: () => void };
 
@@ -26,6 +27,17 @@ export default function TemplateCustomerSupport({ open, onClose }: Props) {
   const [files, setFiles] = useState<File[]>([]);
   const [sent, setSent] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const { profile, workspace } = useSession();
+  // Sent with the ticket so support doesn't have to ask the reporter what they
+  // were looking at. Snapshotted at submit time, not re-derived later.
+  const context = {
+    Workspace: workspace?.name ?? "—",
+    Plan: "Professional",
+    "Quality score": "—",
+  };
 
   useEffect(() => {
     const el = ref.current;
@@ -51,7 +63,7 @@ export default function TemplateCustomerSupport({ open, onClose }: Props) {
       aria-labelledby={titleId}
       onClose={onClose}
       onClick={(e) => e.target === ref.current && onClose()}
-      className="open:flex max-sm:h-dvh max-h-none w-full max-w-none flex-col overflow-hidden rounded-none border-0 bg-background p-0 text-foreground backdrop:bg-[rgb(10_11_15/0.6)] sm:m-auto sm:max-h-[calc(100dvh-3rem)] sm:w-[560px] sm:max-w-[calc(100%-3rem)] sm:rounded-2xl sm:border sm:border-border-strong sm:shadow-2xl"
+      className="open:flex max-sm:h-full max-h-none w-full max-w-none flex-col overflow-hidden rounded-none border-0 bg-background p-0 text-foreground backdrop:bg-[rgb(10_11_15/0.6)] sm:m-auto sm:max-h-[calc(100dvh-3rem)] sm:w-[560px] sm:max-w-[calc(100%-3rem)] sm:rounded-2xl sm:border sm:border-border-strong sm:shadow-2xl"
     >
       {sent ? (
         <div className="flex flex-col items-center px-6 py-10 text-center sm:px-10">
@@ -63,7 +75,7 @@ export default function TemplateCustomerSupport({ open, onClose }: Props) {
           </h2>
           <p className="max-w-[380px] pt-2 text-sm leading-6 text-muted-foreground">
             Our team will respond within 4 business hours. You&rsquo;ll receive a confirmation at{" "}
-            {SUPPORT_CONTEXT.replyTo}.
+            {profile?.email ?? "your email"}.
           </p>
           <button
             onClick={onClose}
@@ -93,12 +105,7 @@ export default function TemplateCustomerSupport({ open, onClose }: Props) {
             <div className="rounded-lg border border-border bg-surface-muted px-4 py-3">
               <p className="text-[11px] font-medium text-muted-foreground-2">Session context (sent automatically)</p>
               <dl className="grid grid-cols-1 gap-x-6 gap-y-1 pt-2 text-xs sm:grid-cols-2">
-                {[
-                  ["Workspace", SUPPORT_CONTEXT.workspace],
-                  ["Plan", SUPPORT_CONTEXT.plan],
-                  ["Last run", SUPPORT_CONTEXT.lastRun],
-                  ["Quality score", SUPPORT_CONTEXT.qualityScore],
-                ].map(([label, value]) => (
+                {Object.entries(context).map(([label, value]) => (
                   <div key={label} className="flex gap-1.5">
                     <dt className="text-muted-foreground-2">{label}:</dt>
                     <dd className="font-medium">{value}</dd>
@@ -194,21 +201,40 @@ export default function TemplateCustomerSupport({ open, onClose }: Props) {
             </div>
           </div>
 
+          {error && (
+            <p role="alert" className="px-5 pb-2 text-xs font-medium text-critical-text sm:px-6">
+              {error}
+            </p>
+          )}
+
           <div className="flex items-center justify-end gap-4 border-t border-border-strong px-5 py-4 sm:px-6">
             <button onClick={onClose} className="text-sm text-muted-foreground hover:text-foreground">
               Cancel
             </button>
             <button
-              onClick={() => {
-                // TODO(backend): POST to the support desk. Nothing is sent yet —
-                // the receipt below is a UI state, not a delivery confirmation.
-                setSent(true);
+              onClick={async () => {
+                if (!profile) return;
+                setBusy(true);
+                setError(null);
+                // The receipt only shows once the row is actually stored —
+                // "Message sent" over a failed insert is the worst outcome here.
+                const { error } = await supabase.from("support_tickets").insert({
+                  user_id: profile.id,
+                  workspace_id: workspace?.id ?? null,
+                  subject,
+                  description,
+                  priority,
+                  context,
+                });
+                setBusy(false);
+                if (error) setError(error.message);
+                else setSent(true);
               }}
-              disabled={!subject.trim()}
+              disabled={!subject.trim() || busy}
               title={subject.trim() ? undefined : "Add a subject first"}
               className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-muted-foreground-2"
             >
-              Send to Support
+              {busy ? "Sending…" : "Send to Support"}
             </button>
           </div>
         </>

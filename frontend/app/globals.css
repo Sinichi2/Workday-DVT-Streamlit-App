@@ -119,3 +119,61 @@ body {
   outline-offset: 2px;
   border-radius: 6px;
 }
+
+/* Motion.
+   Kept here, not per-component: `dialog` and `::backdrop` are element
+   selectors, so every modal in the app animates from one place. @starting-style
+   is the native way to animate something entering the top layer — no library,
+   no mount/unmount state, no JS. */
+@media (prefers-reduced-motion: no-preference) {
+  dialog[open] {
+    animation: dialog-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  dialog[open]::backdrop {
+    animation: backdrop-in 180ms ease-out;
+  }
+  /* Full-bleed sheet on a phone: rises from the bottom edge instead of scaling,
+     which reads as a sheet rather than a shrunken desktop dialog. */
+  @media (width < 40rem) {
+    dialog[open] {
+      animation: sheet-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+  }
+}
+
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+}
+@keyframes sheet-in {
+  from { transform: translateY(2rem); opacity: 0; }
+}
+@keyframes backdrop-in {
+  from { opacity: 0; }
+}
+
+/* Content arriving after a fetch shouldn't snap in. One utility, applied at the
+   few places where a whole panel replaces a skeleton. */
+@media (prefers-reduced-motion: no-preference) {
+  .animate-rise {
+    animation: rise 240ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+}
+
+/* Interactive elements settle instead of snapping. Scoped to the properties
+   that actually change, never `all`. */
+:where(button, a, summary, input, select, textarea) {
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    opacity 140ms ease;
+}
+
+/* Marketing display face. Scoped to a utility so it can never leak into the
+   product UI, which stays entirely on the grotesk. */
+.font-display {
+  font-family: var(--font-display), Georgia, "Times New Roman", serif;
+}
