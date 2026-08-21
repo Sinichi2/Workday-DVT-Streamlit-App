@@ -6,6 +6,7 @@ import { ContinueButton, WorkflowHeader } from "@/app/components/workflow/Workfl
 import { Code, Panel, Th } from "@/app/components/ui/Primitives";
 import { api, fileForm } from "@/app/lib/api";
 import { reportError } from "@/app/lib/errors";
+import { scoreBand } from "@/app/data/subscriber/subscriber.reports_data";
 import { DATASET_ACCEPT } from "@/app/data/subscriber/subscriber.workflow_data";
 
 type CompareResponse = {
@@ -26,7 +27,7 @@ type CompareResponse = {
 
 type Props = { file: File | null; onComplete: () => void };
 
-/** Stage 4 — fidelity check. Compares what you loaded against what the target
+/** Stage 4 — fidelity check. Compares loaded against what the target
  *  system gave back, keyed on a column you choose. The key picker is populated
  *  from the file itself via /columns, so a typo can't silently match nothing. */
 export default function SubscriberWorkflowCompare({ file, onComplete }: Props) {
@@ -145,7 +146,9 @@ export default function SubscriberWorkflowCompare({ file, onComplete }: Props) {
         <>
           <div className="animate-rise mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             <Panel className="p-4">
-              <p className="text-2xl font-semibold leading-8 text-success">{s.match_pct}%</p>
+              <p className={`text-2xl font-semibold leading-8 ${scoreBand(Number(s.match_pct)).text}`}>
+                {s.match_pct}%
+              </p>
               <p className="pt-1 text-xs text-muted-foreground-2">Match rate</p>
             </Panel>
             {(

@@ -100,3 +100,18 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+def check_fresh_token_verifies() -> bool:
+    """Regression: Supabase stamps `iat` on its own clock in whole seconds, so a
+    token can look a fraction of a second early here. With no leeway PyJWT
+    rejects it as not-yet-valid, and every call right after sign-in 401s."""
+    from auth import verify_token
+
+    for attempt in range(5):
+        user = verify_token(token(USER_EMAIL))  # no sleep — that is the race
+        if not user.id:
+            print(f"FAIL: fresh token verified but carried no subject (attempt {attempt})")
+            return False
+    print("ok   fresh tokens verify immediately (iat leeway)")
+    return True

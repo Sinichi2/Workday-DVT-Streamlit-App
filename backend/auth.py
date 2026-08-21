@@ -61,6 +61,10 @@ def _bearer(request: Request) -> str | None:
     return token.strip()
 
 
+#: Tolerance for clock difference between Supabase and this server, in seconds.
+CLOCK_SKEW_LEEWAY = 30
+
+
 def verify_token(token: str) -> User:
     """Decode and verify a Supabase access token. Raises 401 on any problem."""
     try:
@@ -71,6 +75,13 @@ def verify_token(token: str) -> User:
             algorithms=["ES256", "RS256"],
             audience=AUDIENCE,
             issuer=ISSUER,
+            # Supabase mints the token on its own clock, and `iat` is whole
+            # seconds — so a token can arrive a fraction of a second "in the
+            # future" and PyJWT, which allows no tolerance by default, rejects
+            # it as not-yet-valid. RFC 7519 §4.1.5 expects a small leeway for
+            # exactly this. It also extends `exp` by the same amount, which is
+            # why it stays seconds rather than minutes.
+            leeway=CLOCK_SKEW_LEEWAY,
             # Defaults verify exp/nbf/iat; spelled out so a future edit can't
             # quietly relax expiry checking.
             options={"require": ["exp", "sub"], "verify_exp": True, "verify_aud": True},
