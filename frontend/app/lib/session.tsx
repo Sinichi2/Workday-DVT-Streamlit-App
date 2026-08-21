@@ -48,6 +48,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    // A confirmation link arrives as `#access_token=…` on whatever page it
+    // redirects to. Without this the token is dropped and the freshly
+    // confirmed account lands on the sign-in screen.
+    auth.adoptFromUrlFragment({ skipRecovery: true });
     void load();
     // Fires on sign-in, sign-out and token refresh — including from another tab.
     return auth.onChange(() => void load());

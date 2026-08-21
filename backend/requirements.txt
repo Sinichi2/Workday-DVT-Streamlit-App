@@ -3,8 +3,6 @@ uvicorn[standard]>=0.29
 python-multipart>=0.0.9
 pandas>=2.0
 openpyxl>=3.1
-# Legacy .xls (BIFF). openpyxl reads only the OOXML formats, and the upload
-# pickers accept .xls, so without this pandas raises on that one extension.
 xlrd>=2.0
 pyjwt[crypto]>=2.8
 pydantic[email]>=2
