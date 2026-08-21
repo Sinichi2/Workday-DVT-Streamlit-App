@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { FileSpreadsheet, UploadCloud, X } from "lucide-react";
 import { ContinueButton, WorkflowHeader } from "@/app/components/workflow/WorkflowChrome";
 import { Code, Panel, Th } from "@/app/components/ui/Primitives";
-import { fileForm, post } from "@/app/lib/api";
+import { api, fileForm } from "@/app/lib/api";
 
 type TransformResponse = {
   summary: {
@@ -39,7 +39,7 @@ export default function SubscriberWorkflowTransform({ file, onContinue }: Props)
     setError(null);
     setResult(null);
     try {
-      setResult(await post<TransformResponse>("/transform", fileForm({ source: file, mapping: candidate })));
+      setResult(await api.upload<TransformResponse>("/transform", fileForm({ source: file, mapping: candidate })));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Transform failed");
     } finally {

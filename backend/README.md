@@ -1,8 +1,20 @@
 # Valigo engine API
 
-FastAPI wrapper around the four engines (profiling, mapping, validation,
-compare). **Stateless by design** — it processes an upload, returns JSON, and
-keeps nothing. Persistence lives in Supabase, written by the browser under RLS.
+FastAPI service. Two jobs:
+
+1. **The engines** — profiling, mapping, validation, compare. Stateless: an
+   upload goes in, JSON comes out, nothing is kept.
+2. **All Supabase access.** The browser holds no Supabase configuration at all —
+   no project URL, no anon key. It calls this API, which talks to PostgREST,
+   Storage and GoTrue on its behalf.
+
+The important detail in (2): requests forward **the caller's JWT**, not the
+service key (`supa.py`). The service key bypasses row-level security, which
+would make every handler solely responsible for authorization — one missed
+check and a tenant leaks. Forwarding the user's token keeps Postgres enforcing
+the same policies, so this layer is a choke point rather than a new trust
+boundary. `supa.service()` exists for operations that genuinely need to act
+outside any user's rights; nothing uses it today.
 
 ## Run it
 
@@ -23,6 +35,13 @@ set -a && . ./.env.dev.backend && set +a                  # loads Supabase confi
 | POST | `/validate` | Run rules over a dataset. Falls back to the bundled Workday HCM set. |
 | POST | `/compare` | Diff expected vs actual on a key column. |
 | POST | `/columns` | Column headers only — powers the Compare key picker. |
+| POST | `/auth/*` | signup, signin, refresh, signout, reset, password. |
+| GET | `/auth/me` | Profile + workspace + role for the caller, in one call. |
+| — | `/profiles`, `/runs`, `/tickets`, `/help/*`, `/contact`, `/admin/overview` | Everything the browser used to read from PostgREST. |
+
+`POST /contact` is the only unauthenticated data endpoint — it backs the public
+marketing form. Anonymous callers may insert and may **not** read, so the form
+cannot double as a scraper for the lead list.
 
 Everything except `/health` requires a **Supabase access token** as
 `Authorization: Bearer <jwt>`. It is verified locally against the project JWKS

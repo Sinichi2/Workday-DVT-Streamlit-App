@@ -20,6 +20,8 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
+import api_auth
+import api_data
 from auth import CurrentUser, User
 from engines import compare_engine, mapping_engine, profiling_engine, validation_engine
 from loaders import load_dataframe, load_excel_bytes
@@ -41,6 +43,10 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+
+app.include_router(api_auth.router)
+app.include_router(api_data.router)
 
 
 @app.get("/health")

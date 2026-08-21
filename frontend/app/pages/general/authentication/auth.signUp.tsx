@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { supabase } from "@/app/lib/supabase";
+import { auth } from "@/app/lib/api";
 import {
   AUTH_INPUT,
   AuthShell,
@@ -45,20 +45,17 @@ export default function AuthSignUp({ onNavigate }: { onNavigate: (v: AuthView) =
     }
     setBusy(true);
     setError(null);
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      // The `handle_new_user` trigger reads these into the profile row, so the
-      // name survives without a second write the client could fail to make.
-      options: { data: { first_name: firstName, last_name: lastName } },
-    });
-    setBusy(false);
-    if (error) {
-      setError(error.message);
-      return;
+    try {
+      // The `handle_new_user` trigger reads the names into the profile row, so
+      // they survive without a second write the client could fail to make.
+      const r = await auth.signUp(email, password, firstName, lastName);
+      // No session means the project requires email confirmation.
+      if (r.confirm_email) setCheck(true);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Could not create the account");
+    } finally {
+      setBusy(false);
     }
-    // No session means the project requires email confirmation.
-    if (!data.session) setCheck(true);
   }
 
   if (check) {

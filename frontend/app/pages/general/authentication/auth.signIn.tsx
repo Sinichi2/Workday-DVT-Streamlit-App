@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useId, useState } from "react";
-import { supabase } from "@/app/lib/supabase";
+import { auth } from "@/app/lib/api";
 
 export type AuthView = "signIn" | "signUp" | "reset";
 
@@ -217,11 +217,14 @@ export default function AuthSignIn({ onNavigate }: { onNavigate: (v: AuthView) =
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    // On success the session listener swaps the tree out; nothing to do here
-    // but surface a failure.
-    if (error) setError(error.message);
-    setBusy(false);
+    try {
+      await auth.signIn(email, password);
+      // On success the session listener swaps the tree out; nothing to do here.
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Could not sign in");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (

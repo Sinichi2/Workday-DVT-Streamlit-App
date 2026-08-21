@@ -2,7 +2,7 @@
 
 import { useId, useState } from "react";
 import { Card, EASE, Marker, MarketingShell, Reveal } from "@/app/components/marketing/MarketingChrome";
-import { supabase } from "@/app/lib/supabase";
+import { api } from "@/app/lib/api";
 
 const FIELD =
   "h-11 w-full rounded-lg border border-[#D9D0C2] bg-[#FDFBF8] px-3.5 text-sm text-[#1B1815] placeholder:text-[#A89B8A] outline-none transition-colors duration-300 focus:border-[#2F4BA8]";
@@ -33,19 +33,17 @@ export default function GeneralContact() {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    // Inbound enquiries land in the same queue support tickets do, so nothing
-    // arrives in an inbox nobody is on rota for. `user_id` is null — this form
-    // is public, so RLS accepts it through the anon insert path only.
-    const { error } = await supabase.from("contact_requests").insert({
-      name: form.name,
-      email: form.email,
-      company: form.company,
-      interest: form.interest,
-      message: form.message,
-    });
-    setBusy(false);
-    if (error) setError(error.message);
-    else setSent(true);
+    try {
+      // The one endpoint with no auth: it backs the public marketing form.
+      // Anonymous callers may insert and may not read, so the form cannot
+      // double as a scraper for the lead list.
+      await api.postPublic("/contact", form);
+      setSent(true);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Could not send the message");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (

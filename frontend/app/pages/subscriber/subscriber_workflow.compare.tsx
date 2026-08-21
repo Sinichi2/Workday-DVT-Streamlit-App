@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ArrowLeftRight, UploadCloud } from "lucide-react";
 import { ContinueButton, WorkflowHeader } from "@/app/components/workflow/WorkflowChrome";
 import { Code, Panel, Th } from "@/app/components/ui/Primitives";
-import { fileForm, post } from "@/app/lib/api";
+import { api, fileForm } from "@/app/lib/api";
 
 type CompareResponse = {
   summary: {
@@ -42,7 +42,7 @@ export default function SubscriberWorkflowCompare({ file, onComplete }: Props) {
 
   const loadColumns = useCallback(async (f: File) => {
     try {
-      const res = await post<{ columns: string[] }>("/columns", fileForm({ file: f }));
+      const res = await api.upload<{ columns: string[] }>("/columns", fileForm({ file: f }));
       setColumns(res.columns);
       // Pre-select the first column that looks like an identifier rather than
       // making the reviewer hunt for it.
@@ -74,7 +74,7 @@ export default function SubscriberWorkflowCompare({ file, onComplete }: Props) {
     setError(null);
     try {
       setResult(
-        await post<CompareResponse>("/compare", fileForm({ expected, actual, key_column: keyColumn })),
+        await api.upload<CompareResponse>("/compare", fileForm({ expected, actual, key_column: keyColumn })),
       );
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Compare failed");
