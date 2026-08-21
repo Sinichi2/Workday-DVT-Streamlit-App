@@ -2,7 +2,7 @@
 
 import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import { Panel } from "@/app/components/ui/Primitives";
-import type { Article } from "@/app/data/subscriber/subscriber.helpCenter_data";
+import { isImageBlock, type Article } from "@/app/data/subscriber/subscriber.helpCenter_data";
 
 type Props = {
   article: Article;
@@ -36,14 +36,27 @@ export default function TemplateDocumentation({ article, onBack, previous, next,
 
       <Panel className="mt-6 px-5 py-5 sm:px-6">
         <div className="flex flex-col gap-4">
-          {article.body.map((block, i) => (
-            <p key={i} className="text-sm leading-6 text-muted-foreground">
-              {/* The lead-in is bold inline, not a heading — it reads as part of
-                  the sentence, and a real <h*> here would litter the outline. */}
-              {block.strong && <span className="font-semibold text-foreground">{block.strong} </span>}
-              {block.text}
-            </p>
-          ))}
+          {article.body.map((block, i) =>
+            isImageBlock(block) ? (
+              // Placed wherever the author dragged it; array order is the
+              // layout. Unoptimised <img> because the src is a runtime Supabase
+              // URL, not a build-time asset next/image can measure.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={i}
+                src={block.url}
+                alt={block.alt ?? ""}
+                className="w-full rounded-lg border border-border"
+              />
+            ) : (
+              <p key={i} className="text-sm leading-6 text-muted-foreground">
+                {/* The lead-in is bold inline, not a heading — it reads as part
+                    of the sentence, and a real <h*> would litter the outline. */}
+                {block.strong && <span className="font-semibold text-foreground">{block.strong} </span>}
+                {block.text}
+              </p>
+            ),
+          )}
         </div>
       </Panel>
 

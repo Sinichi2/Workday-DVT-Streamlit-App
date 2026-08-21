@@ -6,9 +6,21 @@
 
 export type ArticleCategory = "Guides" | "Workflow" | "Reference" | "Developer";
 
-/** One body block. `strong` is the lead-in the design bolds at the start of a
+/** A paragraph. `strong` is the lead-in the design bolds at the start of a
  *  step ("Step 1 — Upload your source file"), not a separate heading. */
-export type ArticleBlock = { strong?: string; text: string };
+export type ArticleParagraph = { text: string; strong?: string };
+
+/** An image the author placed between paragraphs. Position in the array IS the
+ *  position in the article, which is what the admin editor drags around. */
+export type ArticleImage = { url: string; alt?: string };
+
+export type ArticleBlock = ArticleParagraph | ArticleImage;
+
+/** Narrowing helper — shared so the editor and the reader agree on what
+ *  counts as an image block. */
+export function isImageBlock(b: ArticleBlock): b is ArticleImage {
+  return "url" in b && typeof b.url === "string" && b.url.length > 0;
+}
 
 export type Article = {
   slug: string;

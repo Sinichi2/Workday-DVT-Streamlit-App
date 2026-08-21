@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Download, X } from "lucide-react";
 import { Panel } from "@/app/components/ui/Primitives";
+import { useSession } from "@/app/lib/session";
 import {
   DATE_FORMATS,
   DUMMY_BILLING,
@@ -10,7 +11,6 @@ import {
   DUMMY_PROFILE,
   DUMMY_TEAM,
   DUMMY_WORKSPACE,
-  SETTINGS_TABS,
   TIMEZONES,
   type NotificationPref,
   type ProfileForm,
@@ -21,8 +21,33 @@ import {
 // TODO(backend): every panel below reads and writes seeded state. Point these at
 // the account API; the demo banner comes off once they're real.
 
+/** Which settings a caller may see.
+ *
+ *  Two different authorities, deliberately kept apart:
+ *  - `isAdmin` is PLATFORM staff. They have no tenant of their own to bill or
+ *    configure, so Workspace and Billing are meaningless to them.
+ *  - `workspaceRole` is authority INSIDE a tenant. Only an owner can change
+ *    workspace settings or see the card on file; an editor or viewer cannot.
+ *
+ *  RLS enforces all of this server-side regardless — hiding the tab keeps the
+ *  UI honest rather than being the control itself. */
+function visibleTabs(isAdmin: boolean, role: string | null): SettingsTab[] {
+  if (isAdmin) return ["Profile", "Notifications"];
+  if (role === "owner") return ["Profile", "Workspace", "Notifications", "Billing"];
+  if (role === "editor") return ["Profile", "Workspace", "Notifications"];
+  return ["Profile", "Notifications"];
+}
+
 export default function SubscriberSettings({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { isAdmin, workspaceRole } = useSession();
+  const tabs = visibleTabs(isAdmin, workspaceRole);
   const [tab, setTab] = useState<SettingsTab>("Profile");
+
+  // A role change (or signing in as someone else) can remove the tab you were
+  // on. Fall back rather than rendering a panel the caller may not read.
+  useEffect(() => {
+    if (!tabs.includes(tab)) setTab("Profile");
+  }, [tabs, tab]);
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
@@ -64,8 +89,13 @@ export default function SubscriberSettings({ open, onClose }: { open: boolean; o
           Manage your account, workspace, and notification preferences.
         </p>
 
-        <div role="tablist" aria-label="Settings sections" className="mt-7 grid grid-cols-2 gap-1 rounded-xl border border-border bg-surface p-1 sm:grid-cols-4">
-          {SETTINGS_TABS.map((t) => (
+        <div
+          role="tablist"
+          aria-label="Settings sections"
+          style={{ ["--cols" as string]: String(tabs.length) }}
+          className="mt-7 grid grid-cols-2 gap-1 rounded-xl border border-border bg-surface p-1 sm:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]"
+        >
+          {tabs.map((t) => (
             <button
               key={t}
               role="tab"
@@ -82,9 +112,9 @@ export default function SubscriberSettings({ open, onClose }: { open: boolean; o
 
         <div role="tabpanel" aria-label={tab} className="pt-6">
           {tab === "Profile" && <ProfilePanel />}
-          {tab === "Workspace" && <WorkspacePanel />}
+          {tab === "Workspace" && tabs.includes("Workspace") && <WorkspacePanel />}
           {tab === "Notifications" && <NotificationsPanel />}
-          {tab === "Billing" && <BillingPanel />}
+          {tab === "Billing" && tabs.includes("Billing") && <BillingPanel />}
         </div>
         </div>
     </dialog>
