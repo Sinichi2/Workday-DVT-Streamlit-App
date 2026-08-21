@@ -114,12 +114,25 @@ async def validate(
 
     # Only failing / warning rows are interesting to the reviewer; cap the
     # payload so a large extract doesn't ship every clean row to the browser.
+    # `_row` carries the original position — df_to_records drops the index, and
+    # the reviewer needs to find the row back in their own file.
     flagged = validated[validated["_errors"] != ""].head(max(1, preview_rows))
+    flagged = flagged.assign(_row=flagged.index.astype(int) + 1)
 
     return {
         "summary": clean_dict(summary),
         "findings": df_to_records(flagged),
         "columns": [str(c) for c in validated.columns if not c.startswith("_")],
+        # `_errors` names rule IDs only. Ship the rule book alongside so the
+        # client can resolve an ID to its field, text and severity itself.
+        "rules": {
+            str(r["rule_id"]): {
+                "field": str(r["field"]),
+                "description": str(r["description"]),
+                "severity": str(r["severity"]),
+            }
+            for _, r in rules_df.iterrows()
+        },
         "rules_used": "custom" if rules is not None else "bundled_workday_hcm",
         "log": log,
     }
