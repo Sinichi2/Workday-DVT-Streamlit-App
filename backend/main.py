@@ -100,15 +100,29 @@ async def transform(
 async def validate(
     dataset: UploadFile = File(...),
     rules: UploadFile | None = File(None),
+    mapping: UploadFile | None = File(None),
     preview_rows: int = Form(500),
     user: User = CurrentUser,
 ):
-    """Stage 3 — run business rules over a (target-shape) dataset.
+    """Stage 3 — run business rules over a target-shape dataset.
+
+    The rules address Workday field names ("Employee ID", "Work Email"), so a
+    raw source extract matches nothing and every rule scores zero. Pass the
+    Stage 2 mapping workbook and the dataset is mapped into target shape first,
+    which is what makes the findings real.
 
     If no rules file is supplied, the bundled Workday HCM rule set is used, so
     the demo works from a single upload.
     """
     df = await load_dataframe(dataset)
+
+    if mapping is not None:
+        mapping_buf = await load_excel_bytes(mapping)
+        try:
+            mappings_df, crosswalks = mapping_engine.load_mapping_file(mapping_buf)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail=f"Mapping file error: {e}")
+        df, _, _ = mapping_engine.apply_mapping(df, mappings_df, crosswalks)
 
     if rules is not None:
         rules_buf = await load_excel_bytes(rules)

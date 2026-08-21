@@ -21,12 +21,18 @@ type TransformResponse = {
   total_rows: number;
 };
 
-type Props = { file: File | null; onContinue: () => void };
+type Props = {
+  file: File | null;
+  /** Lifts the accepted mapping workbook to the workflow, because Validate
+   *  needs it to reach target shape. */
+  onMapping: (mapping: File | null) => void;
+  onContinue: () => void;
+};
 
 /** Stage 2. The mapping workbook defines source → target and the transform per
  *  field, so the upload IS the configuration — there is nothing to pick here.
  *  What the reviewer needs to see is what the mapping actually produced. */
-export default function SubscriberWorkflowTransform({ file, onContinue }: Props) {
+export default function SubscriberWorkflowTransform({ file, onMapping, onContinue }: Props) {
   const [mapping, setMapping] = useState<File | null>(null);
   const [result, setResult] = useState<TransformResponse | null>(null);
   const [busy, setBusy] = useState(false);
@@ -39,6 +45,9 @@ export default function SubscriberWorkflowTransform({ file, onContinue }: Props)
         setResult(null);
     try {
       setResult(await api.upload<TransformResponse>("/transform", fileForm({ source: file, mapping: candidate })));
+      // Only after the mapping is known to parse — handing Validate a workbook
+      // the engine just rejected would move the failure one step later.
+      onMapping(candidate);
     } catch (err: unknown) {
       reportError("workflow.transform", err);
     } finally {
@@ -90,6 +99,7 @@ export default function SubscriberWorkflowTransform({ file, onContinue }: Props)
               <button
                 onClick={() => {
                   setMapping(null);
+                  onMapping(null);
                   setResult(null);
                   if (inputRef.current) inputRef.current.value = "";
                 }}
