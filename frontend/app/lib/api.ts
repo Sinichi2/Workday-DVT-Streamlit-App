@@ -139,7 +139,16 @@ export const auth = {
   async signUp(email: string, password: string, first_name: string, last_name: string) {
     const r = await request<{ session: Session | null; confirm_email: boolean }>("/auth/signup", {
       method: "POST",
-      body: { email, password, first_name, last_name },
+      // Send the origin the user actually signed up from, so the confirmation
+      // link comes back to this deployment rather than to whatever single
+      // Site URL the Supabase project happens to be set to.
+      body: {
+        email,
+        password,
+        first_name,
+        last_name,
+        redirect_to: typeof window !== "undefined" ? window.location.origin : undefined,
+      },
       auth: false,
     });
     if (r.session) setSession(r.session);
@@ -164,9 +173,13 @@ export const auth = {
 
   /** The recovery link lands with tokens in the URL fragment. Adopting them
    *  here is what lets the reset screen call /auth/password as that user. */
-  adoptFromUrlFragment(): boolean {
+  /** Adopt the session Supabase puts in the URL fragment when an emailed link
+   *  lands. `skipRecovery` leaves password-recovery links alone so the reset
+   *  screen can claim them and switch into "set a new password" mode. */
+  adoptFromUrlFragment(opts?: { skipRecovery?: boolean }): boolean {
     if (typeof window === "undefined" || !window.location.hash) return false;
     const p = new URLSearchParams(window.location.hash.slice(1));
+    if (opts?.skipRecovery && p.get("type") === "recovery") return false;
     const access_token = p.get("access_token");
     const refresh_token = p.get("refresh_token");
     if (!access_token || !refresh_token) return false;

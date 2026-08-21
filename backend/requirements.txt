@@ -3,13 +3,7 @@ uvicorn[standard]>=0.29
 python-multipart>=0.0.9
 pandas>=2.0
 openpyxl>=3.1
-# Legacy .xls (BIFF). openpyxl reads only the OOXML formats, and the upload
-# pickers accept .xls, so without this pandas raises on that one extension.
 xlrd>=2.0
 pyjwt[crypto]>=2.8
 pydantic[email]>=2
-
-# Used directly by supa.py and api_auth.py to reach PostgREST/Storage/GoTrue.
-# It was only ever present transitively (via the supabase package, since
-# removed) — a clean install without this line cannot import the app at all.
 httpx>=0.27

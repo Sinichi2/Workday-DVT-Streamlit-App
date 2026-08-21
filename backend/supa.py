@@ -139,15 +139,30 @@ def service() -> Supa:
     return Supa(privileged=True)
 
 
-async def gotrue(path: str, payload: dict, token: str | None = None) -> dict:
-    """Auth calls. Kept server-side so the anon key never ships to a browser."""
+async def gotrue(
+    path: str,
+    payload: dict,
+    token: str | None = None,
+    redirect_to: str | None = None,
+) -> dict:
+    """Auth calls. Kept server-side so the anon key never ships to a browser.
+
+    `redirect_to` decides where the link in a confirmation or recovery email
+    lands. GoTrue reads it from the QUERY STRING — a `redirect_to` key in the
+    JSON body is ignored silently, and the mail then falls back to the
+    project's Site URL, which is how these links end up on localhost.
+
+    Supabase only honours a redirect that matches the project's Redirect URLs
+    allow-list; anything else falls back to Site URL just as quietly.
+    """
     if not SUPABASE_URL or not ANON_KEY:
         raise HTTPException(status_code=503, detail="Supabase is not configured")
     headers = {"apikey": ANON_KEY, "Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    params = {"redirect_to": redirect_to} if redirect_to else None
     async with httpx.AsyncClient(timeout=_TIMEOUT) as c:
-        r = await c.post(f"{AUTH}/{path}", json=payload, headers=headers)
+        r = await c.post(f"{AUTH}/{path}", json=payload, headers=headers, params=params)
     if r.status_code >= 400:
         raise _fail(r)
     return r.json() if r.content else {}

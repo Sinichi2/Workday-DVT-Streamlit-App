@@ -38,6 +38,10 @@ class Credentials(BaseModel):
 class SignUp(Credentials):
     first_name: str = ""
     last_name: str = ""
+    #: Where the confirmation link should land. Sent by the browser so the app
+    #: works from any origin; Supabase still rejects anything not on the
+    #: project's Redirect URLs allow-list.
+    redirect_to: str | None = None
 
 
 @router.post("/signup")
@@ -50,6 +54,7 @@ async def signup(body: SignUp):
             # The handle_new_user trigger reads these into the profile row.
             "data": {"first_name": body.first_name, "last_name": body.last_name},
         },
+        redirect_to=body.redirect_to,
     )
     # No session means the project requires email confirmation.
     return {"session": data.get("access_token") and data or None, "confirm_email": not data.get("access_token")}
@@ -87,10 +92,7 @@ class ResetRequest(BaseModel):
 
 @router.post("/reset")
 async def request_reset(body: ResetRequest):
-    payload = {"email": body.email}
-    if body.redirect_to:
-        payload["redirect_to"] = body.redirect_to
-    await gotrue("recover", payload)
+    await gotrue("recover", {"email": body.email}, redirect_to=body.redirect_to)
     # Always the same answer. Confirming which addresses have accounts turns
     # this endpoint into an account-enumeration oracle.
     return {"ok": True}

@@ -51,8 +51,21 @@ app.include_router(api_data.router)
 
 @app.get("/health")
 def health():
-    """Open by design — a load balancer has no session to present."""
-    return {"status": "ok", "service": "valigo-engine-api"}
+    """Open by design — a load balancer has no session to present.
+
+    `commit` is the deployed revision. Render, Vercel and Fly all inject their
+    own name for it; reporting it here turns "is my fix live?" into one curl
+    instead of guesswork against the route list.
+    """
+    commit = next(
+        (
+            os.environ[k][:7]
+            for k in ("RENDER_GIT_COMMIT", "VERCEL_GIT_COMMIT_SHA", "SOURCE_VERSION", "GIT_COMMIT")
+            if os.environ.get(k)
+        ),
+        "dev",
+    )
+    return {"status": "ok", "service": "valigo-engine-api", "commit": commit}
 
 
 @app.post("/profile")
