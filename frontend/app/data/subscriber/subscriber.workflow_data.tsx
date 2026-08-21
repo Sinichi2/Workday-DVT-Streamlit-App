@@ -2,6 +2,18 @@ import type { Severity } from "@/app/data/subscriber/subscriber.dashboard_data";
 
 /** The four workflow steps, in the order the sidebar and the "Continue to …"
  *  buttons walk through them. */
+/** Formats the engine can read as a dataset — must stay in step with
+ *  `_read_bytes` in backend/loaders.py, or the picker accepts files the server
+ *  then rejects. Mapping workbooks are a separate, Excel-only case: they carry
+ *  several sheets, which a CSV cannot. */
+export const DATASET_EXTENSIONS = [".csv", ".txt", ".xlsx", ".xls", ".xlsm"] as const;
+
+/** For an <input type="file"> accept attribute. */
+export const DATASET_ACCEPT = DATASET_EXTENSIONS.join(",");
+
+export const isDataset = (name: string) =>
+  DATASET_EXTENSIONS.some((ext) => name.toLowerCase().endsWith(ext));
+
 export const WORKFLOW_ORDER = ["profile", "transform", "validate", "compare"] as const;
 export type Step = (typeof WORKFLOW_ORDER)[number];
 

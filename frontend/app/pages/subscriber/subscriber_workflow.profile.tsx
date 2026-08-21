@@ -6,6 +6,7 @@ import { ContinueButton, WorkflowHeader } from "@/app/components/workflow/Workfl
 import { Panel } from "@/app/components/ui/Primitives";
 import { api, fileForm } from "@/app/lib/api";
 import { reportError } from "@/app/lib/errors";
+import { DATASET_ACCEPT, isDataset } from "@/app/data/subscriber/subscriber.workflow_data";
 
 type ProfileResponse = {
   overview: {
@@ -25,8 +26,8 @@ const ISSUE_TONE: Record<string, string> = {
   Low: "bg-low-subtle text-low-text",
 };
 
-// The design states ".csv only · Max 50 MB" — enforce both here rather than
-// letting a 2 GB XLSX reach the parser and fail somewhere less legible.
+// Size is still worth gating client-side rather than letting a 2 GB workbook
+// reach the parser and fail somewhere less legible.
 const MAX_BYTES = 50 * 1024 * 1024;
 
 type Props = { file: File | null; onFile: (file: File | null) => void; onContinue: () => void };
@@ -66,8 +67,11 @@ export default function SubscriberWorkflowProfile({ file, onFile, onContinue }: 
     if (!candidate) return;
     // Client-side gate. Rejecting is the feedback: the file simply is not
     // accepted, and the reason goes to the console.
-    if (!candidate.name.toLowerCase().endsWith(".csv")) {
-      reportError("workflow.profile", new Error(`${candidate.name} is not a .csv file`));
+    if (!isDataset(candidate.name)) {
+      reportError(
+        "workflow.profile",
+        new Error(`${candidate.name} is not a supported format (${DATASET_ACCEPT})`),
+      );
       return;
     }
     if (candidate.size > MAX_BYTES) {
@@ -101,7 +105,7 @@ export default function SubscriberWorkflowProfile({ file, onFile, onContinue }: 
         <input
           ref={inputRef}
           type="file"
-          accept=".csv,text/csv"
+          accept={DATASET_ACCEPT}
           className="sr-only"
           onChange={(e) => accept(e.target.files?.[0])}
         />
@@ -138,7 +142,7 @@ export default function SubscriberWorkflowProfile({ file, onFile, onContinue }: 
             </button>
             <div className="text-center">
               <p className="text-sm font-medium">Drop your CSV file here</p>
-              <p className="pt-1 text-xs text-muted-foreground-2">or press the icon above · .csv only · Max 50 MB</p>
+              <p className="pt-1 text-xs text-muted-foreground-2">or press the icon above · .csv or Excel · Max 50 MB</p>
             </div>
             <button
               onClick={() => inputRef.current?.click()}

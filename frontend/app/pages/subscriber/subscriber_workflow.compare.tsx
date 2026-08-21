@@ -6,6 +6,7 @@ import { ContinueButton, WorkflowHeader } from "@/app/components/workflow/Workfl
 import { Code, Panel, Th } from "@/app/components/ui/Primitives";
 import { api, fileForm } from "@/app/lib/api";
 import { reportError } from "@/app/lib/errors";
+import { DATASET_ACCEPT } from "@/app/data/subscriber/subscriber.workflow_data";
 
 type CompareResponse = {
   summary: {
@@ -201,7 +202,7 @@ function FilePicker({
         ref={ref}
         id={id}
         type="file"
-        accept=".csv,.xlsx,.xls,.xlsm"
+        accept={DATASET_ACCEPT}
         className="sr-only"
         onChange={(e) => onPick(e.target.files?.[0])}
       />
